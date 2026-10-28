@@ -94,3 +94,14 @@ Captures now carry actual sample rate, channel count and device metadata separat
 The final browser probe waited for the app controls, then read the full DOM/native accessibility tree. Isolated panel semantics fixed an observed progress-indicator grouping that hid controls from the native tree. After the fix, Start, Stop, modes, scene/backend selectors, sliders and export appear as independent native accessibility nodes. CDP mouse input still timed out, and documented native AX activation focused Start without an observed state transition. No completed browser trial, browser download or browser screenshot is claimed. This does not negate the independently passing actual Flutter widget/runtime, numerical, export-serialization and unpacked-WAV checks. Native hardware remains outside this milestone.
 
 Regular milestone commits have been pushed throughout (2366a72, a077f17, 855f5d5, 274ee69, afe0232). Final delivery adds the format-contract/semantic-boundary fixes and this evidence. All task files are local/reviewable in Git, and no unrelated user files were changed. The loopback-only demo process is an optional local preview, not a deployment or audio service.
+
+## Final source-bound build
+
+Final compiled source commit: `85afabdddcea3418ee5ef67cc9c4bd07e742c93f`, pushed to origin/main and verified with `git ls-remote origin refs/heads/main`. Working tree was clean. Using the previously recorded cached-tool prefix, executed:
+
+```sh
+build web --no-pub --no-web-resources-cdn --no-wasm-dry-run --dart-define=SOURCE_REVISION=85afabdddcea3418ee5ef67cc9c4bd07e742c93f
+analyze --no-pub
+```
+
+Both exit 0; analyzer reports no issues. The local build has main.dart.js and dependency NOTICES. The known unused-Cupertino font-family build warning remains documented above. The source-bound local page was reloaded, its Start control became visible, and the in-app tab was retained as the user-facing preview. No successful browser click/download is claimed. This final receipt addition changes documentation only; compiled app sources are exactly those at the recorded commit.
