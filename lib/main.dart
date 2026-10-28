@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'audio/audio_backend.dart';
 import 'audio/simulated_backend.dart';
 import 'domain/experiment.dart';
@@ -8,7 +9,14 @@ import 'export/export_bundle.dart';
 import 'runner/trial_runner.dart';
 import 'ui/plots.dart';
 
-void main() => runApp(const PhonopticonApp());
+// Keep controls inspectable by assistive tools without an invisible opt-in.
+// The handle intentionally lives for the lifetime of the application.
+SemanticsHandle? _applicationSemantics;
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  _applicationSemantics ??= SemanticsBinding.instance.ensureSemantics();
+  runApp(const PhonopticonApp());
+}
 
 class PhonopticonApp extends StatelessWidget {
   const PhonopticonApp({super.key, this.backend});

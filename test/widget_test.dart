@@ -53,6 +53,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('CANCELLED'), findsOneWidget);
     expect(find.text('Movement above fixture threshold'), findsNothing);
+    await tester.tap(find.byKey(const Key('start')));
+    await tester.pump(const Duration(milliseconds: 100));
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('CANCELLED'), findsOneWidget);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('CANCELLED'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

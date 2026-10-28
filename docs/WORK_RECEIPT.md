@@ -81,3 +81,7 @@ Browser tool: cua_repl, ChatGPT in-app browser, target http://127.0.0.1:8765/. C
 - M6/M7: native iPhone capture and physical trials are future milestones with concrete prerequisites/protocol, not current results.
 
 No scientific/editorial acceptance, release approval, deployment, physical validation or Metamaps/Orca integration is asserted by this worker receipt.
+
+## Accessibility and foreground lifecycle
+
+The app now keeps a semantics handle for its lifetime so assistive tools can inspect controls without a hidden accessibility opt-in. Added an inactive/resumed lifecycle check: backgrounding cancels a running simulation and resuming does not restart it. Reran analyzer and all seven Flutter tests after these changes: exit 0, no analyzer issues, 69 numerical assertions and all seven tests passing.
