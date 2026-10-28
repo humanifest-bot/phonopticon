@@ -11,8 +11,12 @@ Float64List waveform(ExperimentConfig c) {
     final t = i / c.sampleRate;
     final u = (i % c.sweepSamples) / c.sampleRate;
     final phase = c.mode == ProbeMode.tone
-        ? c.toneHz * t : c.startHz * u + 0.5 * c.slope * u * u;
-    final ramp = math.min(1.0, math.min(i, out.length - 1 - i) / (c.sampleRate * 0.01));
+        ? c.toneHz * t
+        : c.startHz * u + 0.5 * c.slope * u * u;
+    final ramp = math.min(
+      1.0,
+      math.min(i, out.length - 1 - i) / (c.sampleRate * 0.01),
+    );
     out[i] = c.amplitude * ramp * math.sin(2 * math.pi * phase);
   }
   return out;
@@ -40,11 +44,15 @@ Float64List synthesizeReceived(ExperimentConfig c, Float64List tx) {
   final rx = Float64List(tx.length);
   for (var i = 0; i < rx.length; i++) {
     final t = (i - c.startupSamples) / c.sampleRate;
-    final moving = c.scenario == Scenario.moving || c.scenario == Scenario.transmitterOff;
-    final r = c.rangeMeters + (moving ? c.motionMeters * math.sin(2 * math.pi * c.motionHz * t) : 0);
+    final moving =
+        c.scenario == Scenario.moving || c.scenario == Scenario.transmitterOff;
+    final r =
+        c.rangeMeters +
+        (moving ? c.motionMeters * math.sin(2 * math.pi * c.motionHz * t) : 0);
     final echoDelay = 2 * r / ExperimentConfig.soundSpeed * c.sampleRate;
     final staticDelay = 2 * 1.07 / ExperimentConfig.soundSpeed * c.sampleRate;
-    rx[i] = 0.6 * interpolate(tx, (i - c.startupSamples).toDouble()) +
+    rx[i] =
+        0.6 * interpolate(tx, (i - c.startupSamples).toDouble()) +
         0.4 * interpolate(tx, i - c.startupSamples - echoDelay) +
         0.12 * interpolate(tx, i - c.startupSamples - staticDelay) +
         (c.scenario == Scenario.silence ? 0 : c.noiseAmplitude * noise.next());

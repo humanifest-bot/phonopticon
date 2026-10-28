@@ -33,3 +33,13 @@ FLUTTER_ROOT=/opt/homebrew/Caskroom/flutter/3.47.4/flutter CI=true FLUTTER_SUPPR
 Commands appended: `--version`, then `pub get --offline`. Both exit 0. Package resolution selected 24 SDK/cached packages and generated project package metadata/lockfile. The offline command prints a generic “Downloading packages...” heading, but offline resolution does not authorize or request online retrieval. It also added build/platform directory exclusions to analysis_options.yaml. Expected tool writes include SDK lock/cache metadata, approved tool settings and local project .dart_tool files. No SDK upgrade or live audio execution.
 
 Flutter UI, rendered-runner behavior, exports and native builds are not yet verified at this milestone. The selected toolchain still lacks the iPhoneOS SDK; no physical validation is claimed.
+
+## Flutter interface milestone
+
+New Flutter UI implements mode/scene selection, constrained settings, explicit Start/Stop, countdown, simulated-source labels, absolute-power heatmaps, movement traces and a numerical frame inspector. Local exports are JSON bundles containing Float32 WAVs, manifest, analysis arrays, metrics CSV and standalone SVG plots. Web export uses a browser download; the IO adapter uses a new temporary directory. Neither uploads data.
+
+Inspected `test/widget_test.dart` and pubspec before execution. Tests render in the cached flutter_tester subprocess, simulate button actions/time and exercise local in-memory DSP; no hardware audio or network. Expected writes: build/test caches, SDK lock metadata. Commands used the approved cached-tool prefix with `test --no-pub` and `analyze --no-pub`.
+
+Initial results: static analysis found three console-print lint notices in the verification CLI; replaced with explicit stdout logging. Widget tests exposed scene/backend dropdown overflow at wide and phone widths; fixed selector constraints without relaxing tests. Rerun: analyzer exit 0, no issues; widget tests exit 0, all 3 passed (tone/chirp result workflow, stop/cancel and 390 px phone layout).
+
+A local web build is being checked separately; widget success is not browser verification or native-platform validation.
