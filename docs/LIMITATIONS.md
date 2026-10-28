@@ -22,7 +22,7 @@ Unknown/invalid results must stay distinct from valid low scores. Transmitter-of
 
 ## Runtime and evidence
 
-The local Flutter web build and cached flutter_tester execution are separate from browser interaction and native builds. The first in-app browser probe reached the page, but screenshot capture failed and mouse input timed out at Input.dispatchMouseEvent. Keyboard activation did not establish a verified completed trial. Do not describe this as browser QA passing or diagnose a model incompatibility from it. Widget-render PNGs are labelled as widget evidence.
+The local Flutter web build and cached flutter_tester execution are separate from browser interaction and native builds. The first in-app browser probe reached the page, but screenshot capture failed and mouse input timed out at Input.dispatchMouseEvent. Keyboard activation did not establish a verified completed trial. Do not describe this as browser QA passing or diagnose a model incompatibility from it. Always-on app semantics and isolated panel semantics now expose the actual controls independently in the native accessibility tree. The tool could read/focus Start but did not establish a completed browser trial. Widget-render PNGs are labelled as widget evidence.
 
 Web export uses dart:html and targets the JavaScript build, not Flutter WebAssembly. A future WebAssembly port needs JS interop replacement. The current web app is local-only, uses bundled engine/font assets and blocks external connections through its page policy. Do not host a development server on a public interface by default.
 

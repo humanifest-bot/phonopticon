@@ -128,7 +128,10 @@ class _ExperimentScreenState extends State<ExperimentScreen>
   }
 
   Widget panel(Widget child) => Card(
-    child: Padding(padding: const EdgeInsets.all(22), child: child),
+    child: Padding(
+      padding: const EdgeInsets.all(22),
+      child: Semantics(container: true, explicitChildNodes: true, child: child),
+    ),
   );
   Widget heading(String title, String subtitle) => Padding(
     padding: const EdgeInsets.only(bottom: 16),

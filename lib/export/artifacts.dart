@@ -89,8 +89,10 @@ Map<String, Object?> artifactBundle(
   AnalysisResult? result, {
   String? trialId,
 }) {
+  if (c.actualChannels != 1)
+    throw UnsupportedError('Only mono PCM export is implemented.');
   final tx = wavBytes(c.emitted, c.config.sampleRate),
-      rx = wavBytes(c.received, c.config.sampleRate);
+      rx = wavBytes(c.received, c.actualSampleRate);
   final r =
       result ??
       AnalysisResult(
@@ -131,14 +133,17 @@ Map<String, Object?> artifactBundle(
       },
       'config': c.config.toJson(),
       'actualAudioFormat': {
-        'sampleRate': c.config.sampleRate,
-        'channels': 1,
+        'sampleRate': c.actualSampleRate,
+        'channels': c.actualChannels,
         'encoding': 'Float32 WAV',
       },
       'device': c.sourceKind == 'SIMULATED'
           ? 'none; generated PCM'
           : c.backendId,
-      'hardwareProcessing': 'not applicable to simulation',
+      'deviceMetadata': c.deviceMetadata,
+      'hardwareProcessing': c.sourceKind == 'SIMULATED'
+          ? 'not applicable to simulation'
+          : 'see deviceMetadata; not inferred',
       'calibration': 'fixture-reference-v1; not physical calibration',
       'physicalValidation': false,
       'waveform': {

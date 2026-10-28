@@ -128,7 +128,15 @@ class AudioCapture {
     this.cancelled = false,
     this.status = const [],
     this.elapsedMicroseconds = 0,
-  });
+    int? actualSampleRate,
+    this.actualChannels = 1,
+    this.deviceMetadata = const {
+      'route': 'none; simulated PCM',
+      'processing': 'none',
+    },
+  }) : actualSampleRate = actualSampleRate ?? config.sampleRate;
+  final int actualSampleRate, actualChannels;
+  final Map<String, Object?> deviceMetadata;
   final ExperimentConfig config;
   final Float64List emitted, received;
   final DateTime startedUtc;

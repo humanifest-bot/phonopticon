@@ -244,6 +244,23 @@ Future<void> main() async {
     !driftResult.valid && driftResult.quality.join().contains('drift'),
     'timing drift rejects dependent ranging',
   );
+  final mismatch = AudioCapture(
+    config: driftReference.config,
+    emitted: driftReference.emitted,
+    received: driftReference.received,
+    actualSampleRate: 44100,
+    startedUtc: driftReference.startedUtc,
+  );
+  check(
+    !analyze(mismatch).valid,
+    'actual/requested sample-rate mismatch rejected',
+  );
+  final mismatchBundle = artifactBundle(mismatch, analyze(mismatch));
+  final mismatchManifest = mismatchBundle['manifest'] as Map;
+  check(
+    (mismatchManifest['actualAudioFormat'] as Map)['sampleRate'] == 44100,
+    'export preserves actual capture rate instead of requested rate',
+  );
   final before = analyze(driftReference);
   final truthChanged = analyze(
     AudioCapture(

@@ -5,6 +5,11 @@ import 'spectrum.dart';
 AnalysisResult analyze(AudioCapture audio) {
   final c = audio.config;
   final quality = <String>[...audio.status];
+  if (audio.actualSampleRate != c.sampleRate || audio.actualChannels != 1) {
+    quality.add(
+      'Actual capture format differs from the configured mono analysis format',
+    );
+  }
   if (audio.cancelled) quality.add('Cancelled trial');
   if (audio.received.length != c.samples || audio.emitted.length != c.samples)
     quality.add('Incomplete PCM');

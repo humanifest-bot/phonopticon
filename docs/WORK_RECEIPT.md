@@ -74,7 +74,7 @@ Browser tool: cua_repl, ChatGPT in-app browser, target http://127.0.0.1:8765/. C
 
 - M0: original brief/steering, detailed plan and attribution preserved; rights uncertainty stays explicit and upstream code/assets are not copied.
 - M1: explicit Start/Stop, configuration, unavailable native adapter, ten-second cap and cancellation/restart are implemented and exercised.
-- M2: received-PCM estimators, independent delay/Doppler expectations, controls, invalid data and timing limitations are covered by 69 checks.
+- M2: received-PCM estimators, independent delay/Doppler expectations, controls, invalid data and timing limitations are covered by 71 checks.
 - M3: inspectable tone/range-time plots and numerical frame inspection are implemented; actual-font renders inspected; local bundle serialization/WAV unpacking verified. Browser download action remains unverified because of the scoped browser failure.
 - M4: exact setup/run/verification commands, example configurations/results, this receipt, limitations and physical/iPhone procedure are present. Native builds and physical performance remain unverified.
 - M5: supplied-recording legacy reproduction remains explicitly deferred under the user's mobile simulated-runner steering; the WAV's earlier structural inspection is not represented as reproduction.
@@ -85,3 +85,12 @@ No scientific/editorial acceptance, release approval, deployment, physical valid
 ## Accessibility and foreground lifecycle
 
 The app now keeps a semantics handle for its lifetime so assistive tools can inspect controls without a hidden accessibility opt-in. Added an inactive/resumed lifecycle check: backgrounding cancels a running simulation and resuming does not restart it. Reran analyzer and all seven Flutter tests after these changes: exit 0, no analyzer issues, 69 numerical assertions and all seven tests passing.
+
+
+## Final backend contract and accessibility checks
+
+Captures now carry actual sample rate, channel count and device metadata separately from requested configuration. Analysis rejects a mono/rate mismatch rather than assuming a preference was honored; WAV export records the actual received rate. Added two independent format/export checks: final numerical coverage is **71 assertions**, with **7 Flutter tests passing**. Latest static analysis exits 0 with no issues. Repeated example generation into /private/tmp/phonopticon-examples-v2 produced summary/configuration files byte-identical to the checked-in examples (cmp exit 0).
+
+The final browser probe waited for the app controls, then read the full DOM/native accessibility tree. Isolated panel semantics fixed an observed progress-indicator grouping that hid controls from the native tree. After the fix, Start, Stop, modes, scene/backend selectors, sliders and export appear as independent native accessibility nodes. CDP mouse input still timed out, and documented native AX activation focused Start without an observed state transition. No completed browser trial, browser download or browser screenshot is claimed. This does not negate the independently passing actual Flutter widget/runtime, numerical, export-serialization and unpacked-WAV checks. Native hardware remains outside this milestone.
+
+Regular milestone commits have been pushed throughout (2366a72, a077f17, 855f5d5, 274ee69, afe0232). Final delivery adds the format-contract/semantic-boundary fixes and this evidence. All task files are local/reviewable in Git, and no unrelated user files were changed. The loopback-only demo process is an optional local preview, not a deployment or audio service.
