@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:phonopticon/audio/simulated_backend.dart';
 import 'package:phonopticon/main.dart';
+import 'package:phonopticon/domain/experiment.dart';
 
 void main() {
   testWidgets('idle, explicit start, results, mode change and stop', (
@@ -65,5 +66,36 @@ void main() {
     await tester.pumpWidget(const PhonopticonApp());
     expect(tester.takeException(), isNull);
     expect(find.text('Configure a trial'), findsOneWidget);
+  });
+  testWidgets('native unavailable and invalid input are explicit UI states', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1400, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      PhonopticonApp(backend: SimulatedBackend(realtime: false)),
+    );
+    await tester.tap(find.byType(DropdownButtonFormField<Scenario>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Invalid PCM · failure check').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('start')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('FAILED'), findsOneWidget);
+    expect(find.text('Unknown · analysis unavailable'), findsOneWidget);
+    expect(find.text('Nonfinite PCM'), findsWidgets);
+    await tester.pumpWidget(const PhonopticonApp(key: ValueKey('native-test')));
+    await tester.tap(find.byType(DropdownButtonFormField<bool>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Native audio · unavailable').last);
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<FilledButton>(find.byKey(const Key('start'))).onPressed,
+      isNull,
+    );
+    expect(find.textContaining('No silent fallback'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

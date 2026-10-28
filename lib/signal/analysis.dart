@@ -74,11 +74,11 @@ AnalysisResult _tone(AudioCapture audio) {
 }
 
 // Alignment uses PCM correlation only, not fixture truth/config.startupSamples.
-int? alignDirectPath(AudioCapture audio) {
+int? alignDirectPath(AudioCapture audio, {int? anchor}) {
   final c = audio.config;
   final tx = audio.emitted, rx = audio.received;
   final count = math.min(c.sweepSamples, tx.length ~/ 3);
-  final base = c.sweepSamples * 2;
+  final base = anchor ?? c.sweepSamples * 2;
   if (base + count >= tx.length || rx.length < tx.length) return null;
   var best = 0.0, bestLag = -1;
   var txPower = 0.0;
@@ -117,6 +117,19 @@ AnalysisResult _chirp(AudioCapture audio) {
       axisLabel: 'Equivalent range (m)',
       threshold: 0.15,
     );
+  final endAnchor =
+      ((audio.emitted.length ~/ c.sweepSamples) - 3) * c.sweepSamples;
+  final endLag = alignDirectPath(audio, anchor: endAnchor);
+  if (endLag == null || (endLag - lag).abs() > 1) {
+    return AnalysisResult(
+      axis: [],
+      frames: [],
+      quality: ['Alignment drift or weak end-of-trial reference'],
+      settings: {'startLagSamples': lag, 'endLagSamples': endLag},
+      axisLabel: 'Equivalent range (m)',
+      threshold: 0.15,
+    );
+  }
   final guard =
       (2 *
               ExperimentConfig.maxRange /
@@ -193,6 +206,7 @@ AnalysisResult _chirp(AudioCapture audio) {
       'hopSamples': c.sweepSamples,
       'differenceBandMaxHz':
           ExperimentConfig.maxRange * 2 * c.slope / ExperimentConfig.soundSpeed,
+      'endLagSamples': endLag,
       'alignment':
           'strongest positive direct-path PCM correlation; lag < one sweep',
       'normalization': 'amplitude⁴ × 0.04; fixed fixture reference',

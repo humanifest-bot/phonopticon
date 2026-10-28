@@ -32,7 +32,7 @@ class _PlotPainter extends CustomPainter {
     final painter = TextPainter(
       text: TextSpan(
         text: text,
-        style: TextStyle(fontSize: 11, color: color),
+        style: TextStyle(fontSize: 11, color: color, fontFamily: 'Roboto'),
       ),
       textDirection: TextDirection.ltr,
     )..layout();

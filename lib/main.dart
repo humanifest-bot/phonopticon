@@ -34,7 +34,8 @@ class ExperimentScreen extends StatefulWidget {
   State<ExperimentScreen> createState() => _ExperimentScreenState();
 }
 
-class _ExperimentScreenState extends State<ExperimentScreen> {
+class _ExperimentScreenState extends State<ExperimentScreen>
+    with WidgetsBindingObserver {
   late TrialRunner runner;
   ProbeMode mode = ProbeMode.tone;
   Scenario scenario = Scenario.moving;
@@ -45,6 +46,7 @@ class _ExperimentScreenState extends State<ExperimentScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _makeRunner();
   }
 
@@ -60,8 +62,14 @@ class _ExperimentScreenState extends State<ExperimentScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     runner.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed && runner.busy) runner.stop();
   }
 
   void clearResults() {
@@ -462,6 +470,19 @@ class _ExperimentScreenState extends State<ExperimentScreen> {
                       const Chip(
                         avatar: Icon(Icons.science_outlined, size: 18),
                         label: Text('SIMULATED · feasibility runner'),
+                      ),
+                      IconButton(
+                        tooltip: 'About and licenses',
+                        icon: const Icon(Icons.info_outline),
+                        onPressed: () => showAboutDialog(
+                          context: context,
+                          applicationName: 'Phonopticon',
+                          applicationVersion: '0.1.0',
+                          applicationLegalese:
+                              'Independent simulated acoustic feasibility experiment. '
+                              'Background: Joao Nuno Carvalho FMCW exploration; Nandakumar, Gollakota and Watson, ApneaApp; Gupta et al., SoundWave. '
+                              'No upstream recordings or source code are redistributed. See THIRD_PARTY_NOTICES.md.',
+                        ),
                       ),
                     ],
                   ),

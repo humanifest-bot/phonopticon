@@ -1,0 +1,136 @@
+[
+  {
+    "trial": "tone-stationary",
+    "sourceKind": "SIMULATED",
+    "frames": 8,
+    "movementDetected": false,
+    "quality": [],
+    "peakMetric": 0.0001586426137922566,
+    "medianEquivalentRangeMeters": null,
+    "stationaryRangeErrorMeters": null,
+    "nativeBinWidth": 1.46484375,
+    "pcmFingerprints": {
+      "emitted.wav": "12270cbe",
+      "received.wav": "742aec40",
+      "config": "692c28bb"
+    }
+  },
+  {
+    "trial": "tone-moving",
+    "sourceKind": "SIMULATED",
+    "frames": 8,
+    "movementDetected": true,
+    "quality": [],
+    "peakMetric": 1.1228494375175042,
+    "medianEquivalentRangeMeters": null,
+    "stationaryRangeErrorMeters": null,
+    "nativeBinWidth": 1.46484375,
+    "pcmFingerprints": {
+      "emitted.wav": "12270cbe",
+      "received.wav": "65e28ecd",
+      "config": "1389bb23"
+    }
+  },
+  {
+    "trial": "tone-transmitterOff",
+    "sourceKind": "SIMULATED",
+    "frames": 8,
+    "movementDetected": false,
+    "quality": [],
+    "peakMetric": 1.1231022624730676e-8,
+    "medianEquivalentRangeMeters": null,
+    "stationaryRangeErrorMeters": null,
+    "nativeBinWidth": 1.46484375,
+    "pcmFingerprints": {
+      "emitted.wav": "e647abef",
+      "received.wav": "1448a013",
+      "config": "8667e335"
+    }
+  },
+  {
+    "trial": "tone-invalid",
+    "sourceKind": "SIMULATED",
+    "frames": 0,
+    "movementDetected": false,
+    "quality": [
+      "Nonfinite PCM"
+    ],
+    "peakMetric": null,
+    "medianEquivalentRangeMeters": null,
+    "stationaryRangeErrorMeters": null,
+    "nativeBinWidth": 0.0,
+    "pcmFingerprints": {
+      "emitted.wav": "12270cbe",
+      "received.wav": "b69267ed",
+      "config": "f3637a98"
+    }
+  },
+  {
+    "trial": "chirp-stationary",
+    "sourceKind": "SIMULATED",
+    "frames": 97,
+    "movementDetected": false,
+    "quality": [],
+    "peakMetric": 0.00039532435654754633,
+    "medianEquivalentRangeMeters": 0.5971875,
+    "stationaryRangeErrorMeters": 0.0028124999999999956,
+    "nativeBinWidth": 0.03769230769230769,
+    "pcmFingerprints": {
+      "emitted.wav": "772027e6",
+      "received.wav": "22f14dff",
+      "config": "262cfd99"
+    }
+  },
+  {
+    "trial": "chirp-moving",
+    "sourceKind": "SIMULATED",
+    "frames": 97,
+    "movementDetected": true,
+    "quality": [],
+    "peakMetric": 0.21115075832195265,
+    "medianEquivalentRangeMeters": 0.643125,
+    "stationaryRangeErrorMeters": null,
+    "nativeBinWidth": 0.03769230769230769,
+    "pcmFingerprints": {
+      "emitted.wav": "772027e6",
+      "received.wav": "6fef5f54",
+      "config": "2fd5a3e1"
+    }
+  },
+  {
+    "trial": "chirp-transmitterOff",
+    "sourceKind": "SIMULATED",
+    "frames": 0,
+    "movementDetected": false,
+    "quality": [
+      "No reliable direct-path alignment"
+    ],
+    "peakMetric": null,
+    "medianEquivalentRangeMeters": null,
+    "stationaryRangeErrorMeters": null,
+    "nativeBinWidth": 0.0,
+    "pcmFingerprints": {
+      "emitted.wav": "e647abef",
+      "received.wav": "1448a013",
+      "config": "1aa52627"
+    }
+  },
+  {
+    "trial": "chirp-invalid",
+    "sourceKind": "SIMULATED",
+    "frames": 0,
+    "movementDetected": false,
+    "quality": [
+      "Nonfinite PCM"
+    ],
+    "peakMetric": null,
+    "medianEquivalentRangeMeters": null,
+    "stationaryRangeErrorMeters": null,
+    "nativeBinWidth": 0.0,
+    "pcmFingerprints": {
+      "emitted.wav": "772027e6",
+      "received.wav": "e59cb685",
+      "config": "b111a5b2"
+    }
+  }
+]

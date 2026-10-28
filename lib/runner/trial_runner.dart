@@ -41,6 +41,14 @@ class TrialRunner {
     elapsed = 0;
     state = TrialState.preparing;
     _notify();
+    // Give Stop/dispose a boundary before a backend can begin work.
+    await Future<void>.value();
+    if (_disposed || generation != _generation) return;
+    if (state == TrialState.stopping) {
+      state = TrialState.cancelled;
+      _notify();
+      return;
+    }
     try {
       if (!backend.capabilities.available)
         throw UnsupportedError(backend.capabilities.description);

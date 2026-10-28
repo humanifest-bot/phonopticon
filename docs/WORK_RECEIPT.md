@@ -43,3 +43,41 @@ Inspected `test/widget_test.dart` and pubspec before execution. Tests render in 
 Initial results: static analysis found three console-print lint notices in the verification CLI; replaced with explicit stdout logging. Widget tests exposed scene/backend dropdown overflow at wide and phone widths; fixed selector constraints without relaxing tests. Rerun: analyzer exit 0, no issues; widget tests exit 0, all 3 passed (tone/chirp result workflow, stop/cancel and 390 px phone layout).
 
 A local web build is being checked separately; widget success is not browser verification or native-platform validation.
+
+## Expanded verification and examples
+
+Added independent signed Doppler checks, held-out seeds 17/99 in audible and near-ultrasonic presets, raw WAV/export round-trip checks, known FNV vector, synthetic-truth independence, end-of-trial drift rejection, out-of-gate echoes, mixer-alias configuration rejection, sample discontinuity, stop during preparation and the exact ten-second PCM bound.
+
+The latest dependency-free `tool/verify_core.dart` run exited 0 with **69 checks passed**. It remains in-memory/console-only. The Flutter suite imports this verifier as one numerical test. The expanded suite also covers native-unavailable and invalid-input UI states, cancellation, both modes, phone layout, and two completed-chirp renders. The last `test --no-pub` run exited 0 with **7 tests passed**, including the 69 numerical assertions.
+
+Render tests read only already cached Roboto/MaterialIcons fonts and write PNGs into new private system-temp directories. Initial Ahem-font renders were unsuitable for text inspection; actual-font renders were regenerated and visually inspected at 1400 px and 390 px widths. Text/controls, heatmaps, movement traces, numerical estimates, export control and source/caveat labels are readable without layout overflow. These are flutter_tester renders, not screenshots of a browser or physical phone.
+
+Inspected example/unpack entry points before running. They use Dart standard/local modules, create new output directories, write local JSON/WAV/CSV/SVG files and never run subprocesses, services or network/audio. Executed:
+
+```sh
+/opt/homebrew/Caskroom/flutter/3.47.4/flutter/bin/cache/dart-sdk/bin/dart --disable-dart-dev tool/generate_examples.dart --out /private/tmp/phonopticon-examples-v1
+/opt/homebrew/Caskroom/flutter/3.47.4/flutter/bin/cache/dart-sdk/bin/dart --disable-dart-dev tool/unpack_bundle.dart /private/tmp/phonopticon-examples-v1/chirp-moving.json /private/tmp/phonopticon-chirp-moving-v1
+/usr/bin/afinfo /private/tmp/phonopticon-chirp-moving-v1/received.wav
+```
+
+All exited 0. Eight bundles generated. The unpacked received WAV was independently reported as mono Float32, 48,000 Hz, 96,000 samples/two seconds. Copied only reproducible summary/configuration into examples/summary.json and configs/examples.json; raw output remains outside source. Seed-99 stationary chirp example: median 0.5971875 m for a 0.60 m fixture, native bin width 0.0376923 m. This is synthetic error, not physical accuracy.
+
+## Web build and scoped browser probe
+
+Using the cached-tool prefix, `build web --no-pub --no-web-resources-cdn --no-wasm-dry-run` exited 0. Local engine/font resources are bundled. The builder prints a CupertinoIcons font-family warning although the app uses Material icons; actual-font widget renders show the used icons. No Cupertino dependency was added merely to suppress this warning.
+
+Started `python3 -m http.server 8765 --bind 127.0.0.1 --directory build/web` for a temporary local demo. This binds loopback only and serves generated static files; no external publication. Added a page policy restricting resource connections to the same origin.
+
+Browser tool: cua_repl, ChatGPT in-app browser, target http://127.0.0.1:8765/. Creation/read probe returned title Phonopticon and Flutter's Enable accessibility control. Screenshot capture reported `Unable to capture screenshot`; mouse activation timed out on CDP `Input.dispatchMouseEvent`. Documented keyboard activation did not yield a verified completed trial or export. No provider/profile switch, OS permission change, browser restart or desktop capture was attempted. The transport/input failure is not a diagnosis of app or model incompatibility. Browser interaction/export verification remains a coverage limit; widget/runtime and serialization verification are separate passing evidence.
+
+## Delivery audit
+
+- M0: original brief/steering, detailed plan and attribution preserved; rights uncertainty stays explicit and upstream code/assets are not copied.
+- M1: explicit Start/Stop, configuration, unavailable native adapter, ten-second cap and cancellation/restart are implemented and exercised.
+- M2: received-PCM estimators, independent delay/Doppler expectations, controls, invalid data and timing limitations are covered by 69 checks.
+- M3: inspectable tone/range-time plots and numerical frame inspection are implemented; actual-font renders inspected; local bundle serialization/WAV unpacking verified. Browser download action remains unverified because of the scoped browser failure.
+- M4: exact setup/run/verification commands, example configurations/results, this receipt, limitations and physical/iPhone procedure are present. Native builds and physical performance remain unverified.
+- M5: supplied-recording legacy reproduction remains explicitly deferred under the user's mobile simulated-runner steering; the WAV's earlier structural inspection is not represented as reproduction.
+- M6/M7: native iPhone capture and physical trials are future milestones with concrete prerequisites/protocol, not current results.
+
+No scientific/editorial acceptance, release approval, deployment, physical validation or Metamaps/Orca integration is asserted by this worker receipt.

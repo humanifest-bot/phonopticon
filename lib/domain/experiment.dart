@@ -78,6 +78,22 @@ class ExperimentConfig {
         'Invalid configuration: duration 1–10 s, amplitude (0, 0.05], frequencies below Nyquist, range 0.3–1 m.',
       );
     }
+    // A real mixer also produces a sum component, possibly folded by sampling.
+    // Keep that component away from the selected difference-frequency band.
+    if (mode == ProbeMode.chirp) {
+      final beatLimit = 2 * maxRange / soundSpeed * slope;
+      final validSamples =
+          sweepSamples - (2 * maxRange / soundSpeed * sampleRate).ceil();
+      final margin = 3 * sampleRate / validSamples;
+      final lowestSumOrAlias = (2 * startHz < sampleRate - 2 * endHz)
+          ? 2 * startHz
+          : sampleRate - 2 * endHz;
+      if (validSamples < 32 || lowestSumOrAlias <= beatLimit + margin) {
+        throw ArgumentError(
+          'Chirp band aliases mixer sum into the supported beat band. Choose a supported preset.',
+        );
+      }
+    }
   }
 
   Map<String, Object> toJson() => {
