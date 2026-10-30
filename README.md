@@ -4,6 +4,22 @@ A Flutter acoustic-sonar feasibility runner with **tone movement** and **chirp r
 
 Tone mode shows a Doppler spectrum and movement score; a single tone provides no absolute range. Chirp mode shows equivalent range versus time, a movement score, alignment and numerical frame inspection. The native backend is an explicit unavailable adapter behind `AudioBackend`; it never silently switches to simulation.
 
+## Quick start in iTerm2
+
+Choose **Profiles → Phonopticon — local — Legion Mac — all servers**. This starts the project's only required server, the existing Flutter web build at **http://127.0.0.1:8765/**, with logs visible in that pane. Wait for `READY`; a shell prompt alone does not indicate readiness.
+
+Press **Ctrl-C** to stop the owned server. The pane remains open with its exit status: enter `r` to restart, `s` to check readiness, or `q` to close. Selecting the profile again refuses duplicates or unrelated port conflicts without killing anything. It does not build, install, emit audio, start native services or access Norway.
+
+The profile is installed only under Legion's iTerm DynamicProfiles directory. Versioned source: `tool/Phonopticon-Local.iterm.json`; launch contract: `tool/dev_launch.json`; foreground launcher: `tool/dev_session.zsh`. The local reservation is `/Users/legion/Documents/Codex/dev-ports.json`; lock/diagnostic metadata is `/Users/legion/Documents/Codex/phonopticon-dev`. Logs stay in terminal scrollback; automatic input/session logging is disabled.
+
+To run the same entry directly:
+
+```sh
+/bin/zsh -f /Users/legion/dev/humanifest/phonopticon/tool/dev_session.zsh
+```
+
+If reinstalling this project's profile is explicitly intended, run `python3 -B tool/install_iterm_profile.py`. It creates only missing project configuration and refuses differing existing profile/registry content. Build updates remain a separate deliberate step using the commands below.
+
 ## Run locally
 
 Verified environment: macOS under legion, Flutter 3.47.4, Dart 3.13.3, existing SDK/package artifacts. The app currently has a web runner; native iOS/Android platform projects and physical capture are deferred. No installation, download, signing, account setup or SDK repair is included.

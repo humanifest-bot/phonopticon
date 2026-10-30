@@ -1,0 +1,15 @@
+{
+  "Profiles": [
+    {
+      "Name": "Phonopticon — local — Legion Mac — all servers",
+      "Guid": "3355a340-263a-52c7-b5e8-8558acbba960",
+      "Custom Command": "Yes",
+      "Command": "/bin/zsh -f /Users/legion/dev/humanifest/phonopticon/tool/dev_session.zsh",
+      "Custom Directory": "Yes",
+      "Working Directory": "/Users/legion/dev/humanifest/phonopticon",
+      "Close Sessions On End": false,
+      "Automatically Log": false,
+      "Tags": ["Phonopticon", "local", "all servers"]
+    }
+  ]
+}

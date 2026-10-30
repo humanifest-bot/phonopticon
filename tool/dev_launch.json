@@ -1,0 +1,25 @@
+{
+  "project": "phonopticon",
+  "mode": "local",
+  "execution_host": "Legion Mac",
+  "workspace": "/Users/legion/dev/humanifest/phonopticon",
+  "state_directory": "/Users/legion/Documents/Codex/phonopticon-dev",
+  "port_registry": "/Users/legion/Documents/Codex/dev-ports.json",
+  "profile_name": "Phonopticon — local — Legion Mac — all servers",
+  "profile_guid": "3355a340-263a-52c7-b5e8-8558acbba960",
+  "processes": [
+    {
+      "role": "Flutter web preview",
+      "cwd": "/Users/legion/dev/humanifest/phonopticon",
+      "argv": ["/opt/homebrew/bin/python3", "-B", "tool/dev_server.py", "serve"],
+      "dependencies": ["existing Python 3", "build/web/index.html", "build/web/main.dart.js"],
+      "bind": "127.0.0.1",
+      "transport": "tcp/http",
+      "host_port": 8765,
+      "readiness": "GET /__phonopticon/health matches project, workspace and locked run identity",
+      "stop": "Ctrl-C stops this foreground server only; profile remains open",
+      "required_environment": []
+    }
+  ],
+  "excluded": ["automatic builds", "installs", "native audio", "remote services", "Docker", "database", "API", "workers"]
+}
