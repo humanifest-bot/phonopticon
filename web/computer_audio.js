@@ -2,6 +2,9 @@
 (() => {
   let active = null;
   const supported = () => !!(window.isSecureContext && navigator.mediaDevices?.getUserMedia && window.AudioContext && window.AudioWorkletNode);
+  if (document.documentElement) document.documentElement.dataset.computerAudioSupport = JSON.stringify({
+    secureContext:window.isSecureContext, microphoneApi:!!navigator.mediaDevices?.getUserMedia,
+    audioContext:!!window.AudioContext,audioWorklet:!!window.AudioWorkletNode});
   const stop = () => { if (active) active.cancel(); };
   async function start(configJson, tx) {
     const c = JSON.parse(configJson);
