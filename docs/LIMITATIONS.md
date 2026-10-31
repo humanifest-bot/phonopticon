@@ -1,6 +1,6 @@
 # Current limitations
 
-This MVP demonstrates a simulated experiment workflow and numerical PCM analysis. It has no implemented physical audio backend, no iPhone/Android build validation, no collected physical trials and no physically calibrated movement threshold.
+This MVP demonstrates a simulated experiment workflow and numerical PCM analysis. It now includes an experimental Web Audio computer microphone/speaker adapter. There is still no native iPhone/Android build validation, accepted physical trial result or physically calibrated movement threshold.
 
 ## Signal model
 
@@ -25,6 +25,8 @@ Unknown/invalid results must stay distinct from valid low scores. Transmitter-of
 The local Flutter web build and cached flutter_tester execution are separate from browser interaction and native builds. The first in-app browser probe reached the page, but screenshot capture failed and mouse input timed out at Input.dispatchMouseEvent. Keyboard activation did not establish a verified completed trial. Do not describe this as browser QA passing or diagnose a model incompatibility from it. Always-on app semantics and isolated panel semantics now expose the actual controls independently in the native accessibility tree. The tool could read/focus Start but did not establish a completed browser trial. Widget-render PNGs are labelled as widget evidence.
 
 Web export uses dart:html and targets the JavaScript build, not Flutter WebAssembly. A future WebAssembly port needs JS interop replacement. The current web app is local-only, uses bundled engine/font assets and blocks external connections through its page policy. Do not host a development server on a public interface by default.
+
+The computer adapter uses a local AudioWorklet and explicit permission. Input processing constraints may be ignored; reported settings and latencies do not prove acoustic calibration. Missing input/processor failures stop the trial; failed setup can yield no recording. Partial Stop exports may contain fewer samples and are marked cancelled. Real device performance remains unverified until an actual foreground recording is inspected.
 
 The simulated backend waits through the bounded trial then generates PCM and analyzes it; the final DSP is synchronous and results are not live streaming. The backend contract is full-trial PCM for this MVP. A native implementation may add block streaming/versioned timing without changing waveform/artifact meaning. Stop/dispose are explicit and no physical device is opened.
 

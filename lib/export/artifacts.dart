@@ -39,9 +39,9 @@ String fingerprint(List<int> bytes) {
   return hash.toRadixString(16).padLeft(8, '0');
 }
 
-String movementSvg(AnalysisResult r) {
+String movementSvg(AnalysisResult r, {String sourceKind = 'SIMULATED'}) {
   if (r.frames.isEmpty)
-    return '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="240"><text x="20" y="40">SIMULATED — no valid analysis</text></svg>';
+    return '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="240"><text x="20" y="40">$sourceKind — no valid analysis</text></svg>';
   final maxTime = r.frames.last.time;
   final maxValue = math.max(
     r.threshold * 2,
@@ -54,14 +54,14 @@ String movementSvg(AnalysisResult r) {
       )
       .join(' ');
   final y = 200 - r.threshold / maxValue * 150;
-  return '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="250" viewBox="0 0 800 250"><rect width="800" height="250" fill="#f6f8fb"/><text x="40" y="25">SIMULATED movement score — fixture threshold ${r.threshold}</text><line x1="40" x2="760" y1="$y" y2="$y" stroke="#b05820" stroke-dasharray="6 4"/><polyline points="$points" fill="none" stroke="#006d77" stroke-width="2"/><text x="40" y="230">Time (seconds), 0–${maxTime.toStringAsFixed(2)}; normalized score 0–${maxValue.toStringAsFixed(3)}</text></svg>';
+  return '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="250" viewBox="0 0 800 250"><rect width="800" height="250" fill="#f6f8fb"/><text x="40" y="25">$sourceKind movement score — fixture threshold ${r.threshold}</text><line x1="40" x2="760" y1="$y" y2="$y" stroke="#b05820" stroke-dasharray="6 4"/><polyline points="$points" fill="none" stroke="#006d77" stroke-width="2"/><text x="40" y="230">Time (seconds), 0–${maxTime.toStringAsFixed(2)}; normalized score 0–${maxValue.toStringAsFixed(3)}</text></svg>';
 }
 
-String spectrumSvg(AnalysisResult r) {
+String spectrumSvg(AnalysisResult r, {String sourceKind = 'SIMULATED'}) {
   if (r.frames.isEmpty || r.axis.isEmpty)
-    return '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="240"><text x="20" y="40">SIMULATED — no reliable spectrum</text></svg>';
+    return '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="240"><text x="20" y="40">$sourceKind — no reliable spectrum</text></svg>';
   final out = StringBuffer(
-    '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="400" viewBox="0 0 800 400"><rect width="800" height="400" fill="#08162c"/><g fill="white" font-family="sans-serif" font-size="12"><text x="60" y="24">SIMULATED — ${r.axisLabel} versus time</text><text x="60" y="380">Time (seconds), 0–${r.frames.last.time.toStringAsFixed(2)}</text><text x="5" y="52">${r.axis.last.toStringAsFixed(2)}</text><text x="5" y="346">${r.axis.first.toStringAsFixed(2)}</text></g>',
+    '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="400" viewBox="0 0 800 400"><rect width="800" height="400" fill="#08162c"/><g fill="white" font-family="sans-serif" font-size="12"><text x="60" y="24">$sourceKind — ${r.axisLabel} versus time</text><text x="60" y="380">Time (seconds), 0–${r.frames.last.time.toStringAsFixed(2)}</text><text x="5" y="52">${r.axis.last.toStringAsFixed(2)}</text><text x="5" y="346">${r.axis.first.toStringAsFixed(2)}</text></g>',
   );
   final low = r.axisLabel.startsWith('Doppler') ? -120.0 : -180.0;
   final high = low + 100;
@@ -107,7 +107,20 @@ Map<String, Object?> artifactBundle(
   for (final f in r.frames) {
     csv.writeln('${f.time},${f.movement},${f.range ?? ''}');
   }
-  final configBytes = utf8.encode(jsonEncode(c.config.toJson()));
+  final exportConfig = Map<String, Object>.from(c.config.toJson());
+  if (c.sourceKind != 'SIMULATED') {
+    for (final key in [
+      'seed',
+      'rangeMeters',
+      'motionMeters',
+      'motionHz',
+      'startupSamples',
+      'noiseAmplitude',
+    ]) {
+      exportConfig.remove(key);
+    }
+  }
+  final configBytes = utf8.encode(jsonEncode(exportConfig));
   return {
     'manifest': {
       'schemaVersion': 1,
@@ -124,14 +137,16 @@ Map<String, Object?> artifactBundle(
         defaultValue: 'unrecorded-development-build',
       ),
       'algorithmVersion': 'pcm-dsp-v1',
-      'fixtureModel': 'fractional-delay-echo-v1',
+      'fixtureModel': c.sourceKind == 'SIMULATED'
+          ? 'fractional-delay-echo-v1'
+          : null,
       'fingerprintAlgorithm': 'FNV-1a-32 (noncryptographic)',
       'fingerprints': {
         'emitted.wav': fingerprint(tx),
         'received.wav': fingerprint(rx),
         'config': fingerprint(configBytes),
       },
-      'config': c.config.toJson(),
+      'config': exportConfig,
       'actualAudioFormat': {
         'sampleRate': c.actualSampleRate,
         'channels': c.actualChannels,
@@ -144,26 +159,30 @@ Map<String, Object?> artifactBundle(
       'hardwareProcessing': c.sourceKind == 'SIMULATED'
           ? 'not applicable to simulation'
           : 'see deviceMetadata; not inferred',
-      'calibration': 'fixture-reference-v1; not physical calibration',
+      'calibration': c.sourceKind == 'SIMULATED'
+          ? 'fixture-reference-v1; not physical calibration'
+          : 'uncalibrated physical recording; fixture thresholds are exploratory only',
       'physicalValidation': false,
       'waveform': {
         'phase': 'sin; chirp phase reset each sweep',
         'rampSeconds': 0.01,
-        'directGain': 0.6,
-        'targetGain': 0.4,
-        'staticEchoGain': 0.12,
-        'staticEchoMeters': 1.07,
-        'noise': 'seeded LCG uniform [-noiseAmplitude,+noiseAmplitude]',
+        if (c.sourceKind == 'SIMULATED') ...{
+          'directGain': 0.6,
+          'targetGain': 0.4,
+          'staticEchoGain': 0.12,
+          'staticEchoMeters': 1.07,
+          'noise': 'seeded LCG uniform [-noiseAmplitude,+noiseAmplitude]',
+        },
       },
       'interpretation':
-          'Simulated feasibility workflow only; equivalent range uses colocated approximation.',
+          'Experimental workflow; physical recordings are not accepted validation. Equivalent range uses a colocated approximation.',
     },
     'files': {
       'emitted.wav.base64': base64Encode(tx),
       'received.wav.base64': base64Encode(rx),
       'metrics.csv': csv.toString(),
-      'movement.svg': movementSvg(r),
-      'spectrum.svg': spectrumSvg(r),
+      'movement.svg': movementSvg(r, sourceKind: c.sourceKind),
+      'spectrum.svg': spectrumSvg(r, sourceKind: c.sourceKind),
     },
     'analysis': r.toJson(),
   };

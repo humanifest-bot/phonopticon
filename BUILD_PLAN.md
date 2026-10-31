@@ -143,3 +143,8 @@ The upstream README declares MIT and names Joao Nuno Carvalho, but full license 
 - [Apple microphone permission](https://developer.apple.com/documentation/avfaudio/avaudioapplication/requestrecordpermission(completionhandler:))
 - [Apple audio sample-rate preference](https://developer.apple.com/documentation/avfaudio/avaudiosession/setpreferredsamplerate(_:))
 - [MIT license text](https://opensource.org/license/mit)
+
+
+## Computer microphone extension approved 2026 10 30
+
+The user asked to actually test with the computer microphone. Add an experimental local browser AudioBackend with explicit permission/Start, speaker probes, a ten-second sample cap, Stop/background/error cleanup and reported actual input/context settings. Keep PHYSICAL metadata and uncalibrated scores distinct from simulation. This extends the completed simulated milestone; native iPhone/Android adapters and scientific physical acceptance remain deferred. No dependencies, remote services or automatic audio are authorized/needed by this extension. The operator starts the first hardware trial through the app.

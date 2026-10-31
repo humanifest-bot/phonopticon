@@ -1,8 +1,8 @@
 # Phonopticon
 
-A Flutter acoustic-sonar feasibility runner with **tone movement** and **chirp ranging** modes. This version generates and analyzes deterministic simulated PCM. It does not access a microphone, emit audio, estimate health conditions or establish physical sonar performance.
+A Flutter acoustic-sonar feasibility runner with **tone movement** and **chirp ranging** modes. It supports deterministic simulation and an experimental browser microphone/speaker backend. Physical audio starts only after explicit Start and microphone permission. Neither mode estimates health conditions or establishes validated physical sonar performance.
 
-Tone mode shows a Doppler spectrum and movement score; a single tone provides no absolute range. Chirp mode shows equivalent range versus time, a movement score, alignment and numerical frame inspection. The native backend is an explicit unavailable adapter behind `AudioBackend`; it never silently switches to simulation.
+Tone mode shows a Doppler spectrum and movement score; a single tone provides no absolute range. Chirp mode shows equivalent range versus time, a movement score, alignment and numerical frame inspection. The browser computer-audio backend and simulator share `AudioBackend`; native iOS/Android adapters remain unavailable. There is no silent fallback to simulation.
 
 ## Quick start in iTerm2
 
@@ -59,6 +59,17 @@ To bind a build to a committed source version, add `--dart-define=SOURCE_REVISIO
 7. Export a local JSON trial bundle. Web requests a browser download; the IO export adapter writes into a new temporary directory when used by a future native runner. There is no automatic upload or external share.
 
 Browser automation is distinct from widget execution. See [verification receipt](docs/WORK_RECEIPT.md) for the exact observed browser/tool limits and actual commands/results.
+
+## Test with the computer microphone
+
+1. Use the iTerm profile to serve the rebuilt app at `http://127.0.0.1:8765/`, then reload the page.
+2. Select **Computer mic + speaker (experimental)** in Audio backend. If unavailable, this browser does not expose the required secure microphone/AudioWorklet APIs; no substitute device is opened.
+3. Use built-in speakers and microphone, with low system volume. Begin with **Tone movement**, the audible preset, 4 seconds and default 0.02 digital amplitude. Digital amplitude is not a calibrated sound-pressure level.
+4. Choose Stationary reflector, press Start and grant microphone permission for this localhost origin. Repeat with Moving reflector and with Transmitter off. Move a rigid board while leaving the computer fixed; avoid tapping/scraping it.
+5. Compare spectra/scores and export each local PHYSICAL bundle. The fixture threshold is uncalibrated; a high score can be ambient noise or processing. Chirp estimates require reliable alignment and calibration, so unavailable ranging is a valid outcome.
+6. Stop ends output/capture and releases the microphone. Backgrounding, interruption, denied permission and timeout stop the trial without automatic retry. Do not change system privacy permissions merely to force a pass.
+
+The Web Audio worklet clocks emitted/captured PCM together and caps output at the exact sample count (maximum ten seconds). It requests processing off and exports reported input settings, context sample rate, input label, browser, reported latency and timestamps. Requests do not prove the hardware path is unprocessed; resampling/routing can intervene. There is no microphone-to-speaker monitoring/feedback, upload, new dependency, or audio on page load. Browser support and real acoustic performance still need direct hardware checks.
 
 ## Reproduce offline examples
 

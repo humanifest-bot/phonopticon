@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'audio/audio_backend.dart';
+import 'audio/computer_backend.dart';
 import 'audio/simulated_backend.dart';
 import 'domain/experiment.dart';
 import 'export/artifacts.dart';
@@ -60,8 +61,7 @@ class _ExperimentScreenState extends State<ExperimentScreen>
 
   void _makeRunner() {
     runner = TrialRunner(
-      widget.backend ??
-          (native ? UnsupportedNativeBackend() : SimulatedBackend()),
+      widget.backend ?? (native ? createComputerBackend() : SimulatedBackend()),
     );
     runner.onChanged = () {
       if (mounted) setState(() {});
@@ -174,7 +174,9 @@ class _ExperimentScreenState extends State<ExperimentScreen>
         children: [
           heading(
             'Configure a trial',
-            'Synthetic audio · no speaker or microphone access',
+            native
+                ? 'Computer microphone + speaker · experimental'
+                : 'Synthetic audio · no speaker or microphone access',
           ),
           SegmentedButton<ProbeMode>(
             segments: const [
@@ -199,13 +201,14 @@ class _ExperimentScreenState extends State<ExperimentScreen>
           ),
           const SizedBox(height: 18),
           DropdownButtonFormField<Scenario>(
+            key: ValueKey(native),
             isExpanded: true,
             initialValue: scenario,
             decoration: const InputDecoration(
-              labelText: 'Simulated scene',
+              labelText: 'Trial condition',
               border: OutlineInputBorder(),
             ),
-            items: const [
+            items: [
               DropdownMenuItem(
                 value: Scenario.moving,
                 child: Text('Moving reflector'),
@@ -218,8 +221,13 @@ class _ExperimentScreenState extends State<ExperimentScreen>
                 value: Scenario.transmitterOff,
                 child: Text('Transmitter off · ambient noise'),
               ),
-              DropdownMenuItem(value: Scenario.silence, child: Text('Silence')),
               DropdownMenuItem(
+                enabled: !native,
+                value: Scenario.silence,
+                child: Text('Silence'),
+              ),
+              DropdownMenuItem(
+                enabled: !native,
                 value: Scenario.invalid,
                 child: Text('Invalid PCM · failure check'),
               ),
@@ -237,8 +245,8 @@ class _ExperimentScreenState extends State<ExperimentScreen>
             title: const Text('Near-ultrasonic candidate'),
             subtitle: Text(
               nearUltrasonic
-                  ? '19 kHz tone / 18–20 kHz chirp · simulated'
-                  : '10 kHz tone / 3–10 kHz chirp · simulated',
+                  ? '19 kHz tone / 18–20 kHz chirp · ${native ? 'unverified hardware band' : 'simulated'}'
+                  : '10 kHz tone / 3–10 kHz chirp · ${native ? 'physical' : 'simulated'}',
             ),
             value: nearUltrasonic,
             onChanged: busy
@@ -270,21 +278,23 @@ class _ExperimentScreenState extends State<ExperimentScreen>
               clearResults();
             }),
           ),
-          slider(
-            'Fixture reflector range · ${range.toStringAsFixed(2)} m',
-            range,
-            0.3,
-            1.0,
-            14,
-            (v) => setState(() {
-              range = v;
-              clearResults();
-            }),
-          ),
-          const Text(
-            '48 kHz · seed 42 · ±0.12 m motion at 0.7 Hz. Fixture parameters are not measurement results.',
-            style: TextStyle(fontSize: 12, color: Color(0xff526377)),
-          ),
+          if (!native)
+            slider(
+              'Fixture reflector range · ${range.toStringAsFixed(2)} m',
+              range,
+              0.3,
+              1.0,
+              14,
+              (v) => setState(() {
+                range = v;
+                clearResults();
+              }),
+            ),
+          if (!native)
+            const Text(
+              '48 kHz · seed 42 · ±0.12 m motion at 0.7 Hz. Fixture parameters are not measurement results.',
+              style: TextStyle(fontSize: 12, color: Color(0xff526377)),
+            ),
           const Divider(height: 28),
           DropdownButtonFormField<bool>(
             isExpanded: true,
@@ -293,11 +303,18 @@ class _ExperimentScreenState extends State<ExperimentScreen>
               labelText: 'Audio backend',
               border: OutlineInputBorder(),
             ),
-            items: const [
-              DropdownMenuItem(value: false, child: Text('Simulated PCM')),
+            items: [
+              const DropdownMenuItem(
+                value: false,
+                child: Text('Simulated PCM'),
+              ),
               DropdownMenuItem(
                 value: true,
-                child: Text('Native audio · unavailable'),
+                child: Text(
+                  computerBackendAvailable()
+                      ? 'Computer mic + speaker (experimental)'
+                      : 'Native audio · unavailable',
+                ),
               ),
             ],
             onChanged: busy || widget.backend != null
@@ -307,6 +324,7 @@ class _ExperimentScreenState extends State<ExperimentScreen>
                     if (!mounted) return;
                     setState(() {
                       native = v!;
+                      if (native) scenario = Scenario.stationary;
                       _makeRunner();
                       clearResults();
                     });
@@ -314,8 +332,10 @@ class _ExperimentScreenState extends State<ExperimentScreen>
           ),
           const SizedBox(height: 14),
           if (native)
-            const Text(
-              'Native backend is not implemented. No silent fallback to simulation.',
+            Text(
+              computerBackendAvailable()
+                  ? 'Start requests microphone permission and plays a low-level sound. Use built-in speakers; keep system volume low. No upload. Thresholds are uncalibrated.'
+                  : 'Native backend is not implemented. No silent fallback to simulation.',
               style: TextStyle(color: Color(0xffa25d18)),
             ),
           Row(
@@ -323,7 +343,9 @@ class _ExperimentScreenState extends State<ExperimentScreen>
               Expanded(
                 child: FilledButton.icon(
                   key: const Key('start'),
-                  onPressed: busy || native ? null : start,
+                  onPressed: busy || !runner.backend.capabilities.available
+                      ? null
+                      : start,
                   icon: const Icon(Icons.play_arrow),
                   label: const Text('Start trial'),
                 ),
@@ -370,21 +392,29 @@ class _ExperimentScreenState extends State<ExperimentScreen>
                 : !r.valid
                 ? 'Unknown · analysis unavailable'
                 : r.movementDetected
-                ? 'Movement above fixture threshold'
-                : 'No movement above fixture threshold',
+                ? (native
+                      ? 'Score above uncalibrated threshold'
+                      : 'Movement above fixture threshold')
+                : (native
+                      ? 'Score below uncalibrated threshold'
+                      : 'No movement above fixture threshold'),
           ),
           if (r == null)
-            const SizedBox(
+            SizedBox(
               height: 330,
               child: Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.waves, size: 60, color: Color(0xff86a2ac)),
+                    const Icon(Icons.waves, size: 60, color: Color(0xff86a2ac)),
                     SizedBox(height: 16),
                     Text('Your experiment starts here'),
                     SizedBox(height: 8),
-                    Text('Choose a mode and press Start. No audio is emitted.'),
+                    Text(
+                      native
+                          ? 'Press Start to request microphone access and play a low-level probe.'
+                          : 'Choose a mode and press Start. No audio is emitted.',
+                    ),
                   ],
                 ),
               ),
@@ -478,9 +508,13 @@ class _ExperimentScreenState extends State<ExperimentScreen>
                         style: Theme.of(context).textTheme.headlineMedium
                             ?.copyWith(fontWeight: FontWeight.w700),
                       ),
-                      const Chip(
-                        avatar: Icon(Icons.science_outlined, size: 18),
-                        label: Text('SIMULATED · feasibility runner'),
+                      Chip(
+                        avatar: const Icon(Icons.science_outlined, size: 18),
+                        label: Text(
+                          native
+                              ? 'PHYSICAL · experimental capture'
+                              : 'SIMULATED · feasibility runner',
+                        ),
                       ),
                       IconButton(
                         tooltip: 'About and licenses',
@@ -490,7 +524,7 @@ class _ExperimentScreenState extends State<ExperimentScreen>
                           applicationName: 'Phonopticon',
                           applicationVersion: '0.1.0',
                           applicationLegalese:
-                              'Independent simulated acoustic feasibility experiment. '
+                              'Independent acoustic feasibility experiment. '
                               'Background: Joao Nuno Carvalho FMCW exploration; Nandakumar, Gollakota and Watson, ApneaApp; Gupta et al., SoundWave. '
                               'No upstream recordings or source code are redistributed. See THIRD_PARTY_NOTICES.md.',
                         ),
@@ -521,8 +555,10 @@ class _ExperimentScreenState extends State<ExperimentScreen>
                           ),
                   ),
                   const SizedBox(height: 20),
-                  const Text(
-                    'Simulation verifies the workflow and numerical model. It does not validate phone frequency response, processing, latency, multipath or physical detection. Not a medical device.',
+                  Text(
+                    native
+                        ? 'Physical recording is experimental. Echo processing, latency and hardware response need calibration; fixture thresholds are not validated physical detections. Keep recordings local. Not a medical device.'
+                        : 'Simulation verifies the workflow and numerical model. It does not validate phone frequency response, processing, latency, multipath or physical detection. Not a medical device.',
                     style: TextStyle(color: Color(0xff526377)),
                   ),
                 ],
