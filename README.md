@@ -4,6 +4,14 @@ A Flutter acoustic-sonar feasibility runner with **tone movement** and **chirp r
 
 Tone mode shows a Doppler spectrum and movement score; a single tone provides no absolute range. Chirp mode shows equivalent range versus time, a movement score, alignment and numerical frame inspection. The browser computer-audio backend and simulator share `AudioBackend`; native iOS/Android adapters remain unavailable. There is no silent fallback to simulation.
 
+## Foucault and the risk of acoustic surveillance
+
+The name Phonopticon invites a comparison with Jeremy Bentham's panopticon and Michel Foucault's account of it in *Discipline and Punish*. Bentham's design allowed an observer to watch people who could not tell when they were being watched. Foucault treated this uncertainty as a means of discipline: people can come to regulate their own behaviour under the possibility of observation. See [Bentham's design](https://www.ucl.ac.uk/engage/museums-collections/auto-icon-jeremy-bentham/panopticon) and [Foucault's “Panopticism”](https://www.foucault.info/documents/foucault.disciplineAndPunish.panOpticism/).
+
+For acoustic sensing, the concern is who controls observation and whether those affected can understand, refuse or stop it. A more capable or modified system could be used for covert presence or movement monitoring, coercive surveillance at work or at home, or behavioural judgements based on unreliable signals. Raw microphone recordings can also contain conversations unrelated to the experiment. These are possible abuses, not capabilities validated by this MVP or evidence that a third party deploys acoustic surveillance.
+
+Experiments should be overt and voluntary, with informed consent from people affected, a clear purpose and limited retention of recordings. Browser microphone permission from the operator does not establish consent from bystanders. Explicit Start/Stop controls, short trials and local storage reduce exposure, but do not by themselves make every use acceptable.
+
 ## Quick start in iTerm2
 
 Choose **Profiles → Phonopticon — local — Legion Mac — all servers**. This starts the project's only required server, the existing Flutter web build at **http://127.0.0.1:8765/**, with logs visible in that pane. Wait for `READY`; a shell prompt alone does not indicate readiness.
