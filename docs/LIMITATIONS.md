@@ -37,3 +37,9 @@ Exported Float32 WAVs round internal Float64 samples. Invalid fixtures deliberat
 The upstream sample is structurally readable, but its legacy Python analysis has not been executed or reproduced in this Flutter milestone. No new supplied-recording result is claimed. Its sample/image rights remain unresolved; no source assets are bundled. Original Android/clinical results are not reproduced by the simulation.
 
 The next measurable milestone is a real iPhone producing a foreground local PCM export, followed by separate tone/chirp stationary, moving and transmitter-off trials under a frozen protocol. SDK installation, signing and hardware emission need their applicable authorization.
+
+## Current physical evidence and calibration (2026-11-04)
+
+A later browser session successfully completed and downloaded three actual computer-microphone tone recordings. Earlier browser failures above are historical. Foreground capture and operator-reported playback now have direct evidence; the three pilot trials did not establish movement detection. The input reports 44.1 kHz while the context/export runs at 48 kHz. Physical ranging and native phone builds remain unvalidated.
+
+An experimental received-tone calibration can now be fitted from local pilot WAVs and evaluated on a separate fixed trial plan. Weak carrier, changed settings/route, training reuse, incomplete audio and invalid data cannot become a positive result. Calibration itself is not validation. The first profile has just one pilot per condition; it requires held-out tests. See TONE_CALIBRATION.md for the rule and planned evaluation; unknown/off decisions and recording failures must remain visible in the report.

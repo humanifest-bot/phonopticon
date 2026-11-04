@@ -163,6 +163,7 @@ class AnalysisResult {
     required this.threshold,
     this.alignmentSamples,
     this.nativeBinWidth = 0,
+    this.movementDecision,
   });
   final List<double> axis;
   final List<AnalysisFrame> frames;
@@ -171,9 +172,12 @@ class AnalysisResult {
   final String axisLabel;
   final double threshold, nativeBinWidth;
   final int? alignmentSamples;
+  final bool? movementDecision;
   bool get valid => quality.isEmpty && frames.isNotEmpty;
   bool get movementDetected =>
-      valid && frames.where((f) => f.movement > threshold).length >= 2;
+      valid &&
+      (movementDecision ??
+          frames.where((f) => f.movement > threshold).length >= 2);
   Map<String, Object?> toJson() => {
     'algorithm': 'pcm-dsp-v1',
     'axis': axis,
@@ -184,6 +188,7 @@ class AnalysisResult {
     'quality': quality,
     'settings': settings,
     'movementDetected': movementDetected,
+    'decisionAvailable': valid,
     'frames': [
       for (final f in frames)
         {

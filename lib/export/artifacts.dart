@@ -54,7 +54,10 @@ String movementSvg(AnalysisResult r, {String sourceKind = 'SIMULATED'}) {
       )
       .join(' ');
   final y = 200 - r.threshold / maxValue * 150;
-  return '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="250" viewBox="0 0 800 250"><rect width="800" height="250" fill="#f6f8fb"/><text x="40" y="25">$sourceKind movement score — fixture threshold ${r.threshold}</text><line x1="40" x2="760" y1="$y" y2="$y" stroke="#b05820" stroke-dasharray="6 4"/><polyline points="$points" fill="none" stroke="#006d77" stroke-width="2"/><text x="40" y="230">Time (seconds), 0–${maxTime.toStringAsFixed(2)}; normalized score 0–${maxValue.toStringAsFixed(3)}</text></svg>';
+  final rule = r.settings['calibrationProfile'] == null
+      ? 'fixture'
+      : 'experimental calibrated';
+  return '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="250" viewBox="0 0 800 250"><rect width="800" height="250" fill="#f6f8fb"/><text x="40" y="25">$sourceKind movement score — $rule threshold ${r.threshold}</text><line x1="40" x2="760" y1="$y" y2="$y" stroke="#b05820" stroke-dasharray="6 4"/><polyline points="$points" fill="none" stroke="#006d77" stroke-width="2"/><text x="40" y="230">Time (seconds), 0–${maxTime.toStringAsFixed(2)}; normalized score 0–${maxValue.toStringAsFixed(3)}</text></svg>';
 }
 
 String spectrumSvg(AnalysisResult r, {String sourceKind = 'SIMULATED'}) {
@@ -161,7 +164,11 @@ Map<String, Object?> artifactBundle(
           : 'see deviceMetadata; not inferred',
       'calibration': c.sourceKind == 'SIMULATED'
           ? 'fixture-reference-v1; not physical calibration'
+          : result?.settings['calibrationProfile'] != null
+          ? 'experimental received-tone calibration; not accepted physical validation'
           : 'uncalibrated physical recording; fixture thresholds are exploratory only',
+      if (result?.settings['calibrationProfile'] != null)
+        'calibrationProfile': result!.settings['calibrationProfile'],
       'physicalValidation': false,
       'waveform': {
         'phase': 'sin; chirp phase reset each sweep',

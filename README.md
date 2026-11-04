@@ -30,7 +30,7 @@ If reinstalling this project's profile is explicitly intended, run `python3 -B t
 
 ## Run locally
 
-Verified environment: macOS under legion, Flutter 3.47.4, Dart 3.13.3, existing SDK/package artifacts. The app currently has a web runner; native iOS/Android platform projects and physical capture are deferred. No installation, download, signing, account setup or SDK repair is included.
+Verified environment: macOS under legion, Flutter 3.47.4, Dart 3.13.3, existing SDK/package artifacts. The web runner has completed computer microphone/speaker captures. Native iOS/Android platform projects and accepted physical detection/ranging performance remain pending. No installation, download, signing, account setup or SDK repair is included.
 
 The following function uses the cached Flutter tool directly, avoiding the shell launcher's automatic SDK bootstrap/upgrade path. It suppresses telemetry and update checks. Use a compatible pre-existing SDK; change `sonar_flutter_sdk` only to your authorized SDK location.
 
@@ -118,3 +118,9 @@ For example, the held-out seed-99 stationary chirp fixture at 0.60 m yields a me
 The first physical milestone is one foreground iPhone capture/playback adapter that exports schema-compatible PCM with actual route/rate/processing/timestamps. Read the [native port and physical procedure](docs/PHYSICAL_TEST_PLAN.md) before hardware work. The selected local toolchain lacks the iPhoneOS SDK; no native build is claimed.
 
 See [limitations](docs/LIMITATIONS.md), [build plan](BUILD_PLAN.md), [original brief and decisions](docs/ORIGINAL_REQUEST.md), and [attribution/reuse notes](THIRD_PARTY_NOTICES.md). No upstream WAVs or Python code are redistributed.
+
+## Calibrate tone movement and repeat physical trials
+
+Three real MacBook microphone/speaker pilots have been recorded. Capture/playback worked, but the original fixture threshold did not detect the instructed motion. A new experimental received-tone ratio calibration is available; fitted pilot separation is not a fresh performance result.
+
+Use the local [calibration CLI and frozen evaluation procedure](docs/TONE_CALIBRATION.md), then choose **Load calibration profile** in physical Tone movement mode. **Begin 15-trial validation** guides five fresh trials per condition in a shuffled order, with manual Start/Next and retained failures. Export the complete local session before leaving/reloading. Keep the route, volume and physical setup unchanged. Unknown/probe-absent results are shown explicitly; no reliable detection claim is made until new results are examined.

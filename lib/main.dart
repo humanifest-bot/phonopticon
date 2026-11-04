@@ -1,9 +1,12 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'audio/audio_backend.dart';
 import 'audio/computer_backend.dart';
 import 'audio/simulated_backend.dart';
+import 'calibration/tone_calibration.dart';
+import 'calibration/import_profile.dart';
 import 'domain/experiment.dart';
 import 'export/artifacts.dart';
 import 'export/export_bundle.dart';
@@ -20,8 +23,9 @@ void main() {
 }
 
 class PhonopticonApp extends StatelessWidget {
-  const PhonopticonApp({super.key, this.backend});
+  const PhonopticonApp({super.key, this.backend, this.initialCalibration});
   final AudioBackend? backend;
+  final ToneCalibration? initialCalibration;
   @override
   Widget build(BuildContext context) => MaterialApp(
     title: 'Phonopticon',
@@ -32,13 +36,17 @@ class PhonopticonApp extends StatelessWidget {
       scaffoldBackgroundColor: const Color(0xfff3f5f8),
       cardTheme: const CardThemeData(elevation: 0, margin: EdgeInsets.zero),
     ),
-    home: ExperimentScreen(backend: backend),
+    home: ExperimentScreen(
+      backend: backend,
+      initialCalibration: initialCalibration,
+    ),
   );
 }
 
 class ExperimentScreen extends StatefulWidget {
-  const ExperimentScreen({super.key, this.backend});
+  const ExperimentScreen({super.key, this.backend, this.initialCalibration});
   final AudioBackend? backend;
+  final ToneCalibration? initialCalibration;
   @override
   State<ExperimentScreen> createState() => _ExperimentScreenState();
 }
@@ -52,10 +60,18 @@ class _ExperimentScreenState extends State<ExperimentScreen>
   double duration = 4, amplitude = 0.02, range = 0.6;
   int selectedFrame = 0;
   String? exportStatus;
+  ToneCalibration? calibration;
+  String? calibrationStatus;
+  List<Scenario>? validationPlan;
+  final validationTrials = <Map<String, Object?>>[];
+  bool slotRecorded = false;
+  bool get settingsLocked => runner.busy || validationPlan != null;
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    native = widget.backend?.capabilities.sourceKind == 'PHYSICAL';
+    calibration = widget.initialCalibration;
     _makeRunner();
   }
 
@@ -106,7 +122,178 @@ class _ExperimentScreenState extends State<ExperimentScreen>
         endHz: nearUltrasonic ? 20000 : 10000,
       ),
     );
+    if (!mounted) return;
+    setState(() {
+      final capture = runner.capture;
+      if (native &&
+          mode == ProbeMode.tone &&
+          calibration != null &&
+          capture != null &&
+          runner.result != null) {
+        runner.result = calibration!.apply(capture, runner.result!);
+      }
+      if (validationPlan != null) {
+        validationTrials.add({
+          'index': validationTrials.length + 1,
+          'expectedCondition': scenario.name,
+          'state': runner.state.name,
+          'error': runner.error,
+          'bundle': capture == null
+              ? null
+              : artifactBundle(capture, runner.result),
+        });
+        slotRecorded = true;
+      }
+    });
   }
+
+  Future<void> loadCalibration() async {
+    try {
+      final text = await importProfile();
+      if (!mounted || text == null) return;
+      final parsed = ToneCalibration.fromJson(
+        jsonDecode(text) as Map<String, dynamic>,
+      );
+      setState(() {
+        calibration = parsed;
+        calibrationStatus =
+            'Loaded experimental profile ${parsed.id}. Keep route, system volume and position unchanged.';
+        clearResults();
+      });
+    } catch (e) {
+      if (mounted)
+        setState(() => calibrationStatus = 'Calibration load failed: $e');
+    }
+  }
+
+  void beginValidation() {
+    final p = calibration!;
+    if (p.sampleRate != 48000 ||
+        p.toneHz != 10000 ||
+        p.amplitude != amplitude ||
+        p.durationSeconds != duration ||
+        nearUltrasonic) {
+      setState(
+        () => calibrationStatus =
+            'Use the matching profile settings: 10 kHz, ${p.durationSeconds} s, amplitude ${p.amplitude}.',
+      );
+      return;
+    }
+    setState(() {
+      validationPlan = [
+        for (var i = 0; i < 5; i++) ...[
+          Scenario.stationary,
+          Scenario.moving,
+          Scenario.transmitterOff,
+        ],
+      ]..shuffle(math.Random(20261104));
+      validationTrials.clear();
+      slotRecorded = false;
+      scenario = validationPlan!.first;
+      clearResults();
+    });
+  }
+
+  void nextValidation() {
+    setState(() {
+      scenario = validationPlan![validationTrials.length];
+      slotRecorded = false;
+      clearResults();
+    });
+  }
+
+  Future<void> exportValidation() async {
+    setState(() => exporting = true);
+    try {
+      final session = {
+        'schemaVersion': 1,
+        'kind': 'tone-held-out-validation',
+        'profile': calibration!.toJson(),
+        'protocol': {
+          'seed': 20261104,
+          'order': validationPlan!.map((s) => s.name).toList(),
+          'plannedPerCondition': 5,
+          'automaticEmission': false,
+          'targetMovingHits': 4,
+          'maximumControlFalseAlarms': 1,
+          'note':
+              'Preliminary local feasibility only; off/probe-absent and other unavailable decisions must be reported separately.',
+        },
+        'completedTrials': validationTrials.length,
+        'trials': validationTrials,
+      };
+      final message = await saveBundle(
+        jsonEncode(session),
+        'phonopticon-validation-${DateTime.now().toUtc().microsecondsSinceEpoch}',
+      );
+      if (mounted) setState(() => calibrationStatus = message);
+    } catch (e) {
+      if (mounted)
+        setState(() => calibrationStatus = 'Validation export failed: $e');
+    } finally {
+      if (mounted) setState(() => exporting = false);
+    }
+  }
+
+  List<Widget> calibrationControls() => [
+    const Divider(),
+    const Text(
+      'Tone calibration',
+      style: TextStyle(fontWeight: FontWeight.bold),
+    ),
+    if (calibration == null)
+      const Text(
+        'Load a profile fitted to separate stationary, moving and transmitter-off pilot recordings. Fresh validation is required.',
+      ),
+    if (calibration != null)
+      Text(
+        'Experimental profile ${calibration!.id} · ratio threshold ${calibration!.threshold.toStringAsPrecision(3)} · calibration trials ${calibration!.trainingCounts.values.reduce((a, b) => a + b)}',
+      ),
+    if (validationPlan == null)
+      Wrap(
+        spacing: 8,
+        children: [
+          OutlinedButton(
+            onPressed: runner.busy ? null : loadCalibration,
+            child: const Text('Load calibration profile'),
+          ),
+          if (calibration != null)
+            OutlinedButton(
+              key: const Key('begin-validation'),
+              onPressed: runner.busy ? null : beginValidation,
+              child: const Text('Begin 15-trial validation'),
+            ),
+        ],
+      ),
+    if (validationPlan != null) ...[
+      Text(
+        'Validation ${validationTrials.length}/15 saved · ${slotRecorded ? 'review result' : 'press Start when ready'}',
+        key: const Key('validation-progress'),
+      ),
+      Text(
+        scenario == Scenario.stationary
+            ? 'Sit still and avoid speaking for the full trial.'
+            : scenario == Scenario.moving
+            ? 'Lean toward/away about 10 cm, once per second. Keep the computer fixed.'
+            : 'No probe tone. Repeat the same leaning motion; keep system volume unchanged.',
+      ),
+      if (slotRecorded && validationTrials.length < 15)
+        FilledButton(
+          key: const Key('next-validation'),
+          onPressed: nextValidation,
+          child: const Text('Save result kept · next planned trial'),
+        ),
+      OutlinedButton(
+        onPressed: exporting ? null : exportValidation,
+        child: const Text('Export validation session'),
+      ),
+      const Text(
+        'Every Start is manual. Failures and cancelled trials stay in the session. Export before leaving or reloading.',
+      ),
+    ],
+    if (calibrationStatus != null) SelectableText(calibrationStatus!),
+    const SizedBox(height: 12),
+  ];
 
   Future<void> export() async {
     final capture = runner.capture;
@@ -160,7 +347,7 @@ class _ExperimentScreenState extends State<ExperimentScreen>
         min: min,
         max: max,
         divisions: divisions,
-        onChanged: runner.busy ? null : changed,
+        onChanged: settingsLocked ? null : changed,
       ),
     ],
   );
@@ -192,7 +379,7 @@ class _ExperimentScreenState extends State<ExperimentScreen>
               ),
             ],
             selected: {mode},
-            onSelectionChanged: busy
+            onSelectionChanged: settingsLocked
                 ? null
                 : (s) => setState(() {
                     mode = s.single;
@@ -201,7 +388,9 @@ class _ExperimentScreenState extends State<ExperimentScreen>
           ),
           const SizedBox(height: 18),
           DropdownButtonFormField<Scenario>(
-            key: ValueKey(native),
+            key: ValueKey(
+              '$native-${validationPlan == null ? 'free' : validationTrials.length}-$slotRecorded',
+            ),
             isExpanded: true,
             initialValue: scenario,
             decoration: const InputDecoration(
@@ -232,7 +421,7 @@ class _ExperimentScreenState extends State<ExperimentScreen>
                 child: Text('Invalid PCM · failure check'),
               ),
             ],
-            onChanged: busy
+            onChanged: settingsLocked
                 ? null
                 : (v) => setState(() {
                     scenario = v!;
@@ -249,7 +438,7 @@ class _ExperimentScreenState extends State<ExperimentScreen>
                   : '10 kHz tone / 3–10 kHz chirp · ${native ? 'physical' : 'simulated'}',
             ),
             value: nearUltrasonic,
-            onChanged: busy
+            onChanged: settingsLocked
                 ? null
                 : (v) => setState(() {
                     nearUltrasonic = v;
@@ -317,7 +506,7 @@ class _ExperimentScreenState extends State<ExperimentScreen>
                 ),
               ),
             ],
-            onChanged: busy || widget.backend != null
+            onChanged: settingsLocked || widget.backend != null
                 ? null
                 : (v) async {
                     await runner.dispose();
@@ -338,12 +527,16 @@ class _ExperimentScreenState extends State<ExperimentScreen>
                   : 'Native backend is not implemented. No silent fallback to simulation.',
               style: TextStyle(color: Color(0xffa25d18)),
             ),
+          if (native && mode == ProbeMode.tone) ...calibrationControls(),
           Row(
             children: [
               Expanded(
                 child: FilledButton.icon(
                   key: const Key('start'),
-                  onPressed: busy || !runner.backend.capabilities.available
+                  onPressed:
+                      busy ||
+                          slotRecorded ||
+                          !runner.backend.capabilities.available
                       ? null
                       : start,
                   icon: const Icon(Icons.play_arrow),
@@ -393,10 +586,14 @@ class _ExperimentScreenState extends State<ExperimentScreen>
                 ? 'Unknown · analysis unavailable'
                 : r.movementDetected
                 ? (native
-                      ? 'Score above uncalibrated threshold'
+                      ? (r.settings['calibrationProfile'] != null
+                            ? 'Movement above frozen calibration threshold'
+                            : 'Score above uncalibrated threshold')
                       : 'Movement above fixture threshold')
                 : (native
-                      ? 'Score below uncalibrated threshold'
+                      ? (r.settings['calibrationProfile'] != null
+                            ? 'No movement above frozen calibration threshold'
+                            : 'Score below uncalibrated threshold')
                       : 'No movement above fixture threshold'),
           ),
           if (r == null)
@@ -434,10 +631,16 @@ class _ExperimentScreenState extends State<ExperimentScreen>
             TrialPlot(result: r),
             const SizedBox(height: 15),
             Text(
-              'Movement score · threshold ${r.threshold} · at least 2 frames',
+              r.settings['calibrationProfile'] == null
+                  ? 'Movement score · threshold ${r.threshold} · at least 2 frames'
+                  : 'Received sideband/carrier ratio · trial 80th percentile threshold ${r.threshold.toStringAsPrecision(3)}',
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             TrialPlot(result: r, movement: true),
+            if (r.settings['calibrationProfile'] != null)
+              Text(
+                'Trial ratio score: ${r.settings['trialScore']} · usable carrier fraction: ${r.settings['carrierFraction']} · experimental calibration',
+              ),
             const SizedBox(height: 8),
             Text('Frame inspector · ${r.frames.length} frames'),
             Slider(
