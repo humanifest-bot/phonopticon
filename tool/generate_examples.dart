@@ -20,7 +20,7 @@ void main(List<String> args) {
   dir.createSync(recursive: true);
   final summaries = <Map<String, Object?>>[];
   final configurations = <Map<String, Object>>[];
-  for (final mode in ProbeMode.values) {
+  for (final mode in [ProbeMode.tone, ProbeMode.chirp]) {
     for (final scenario in [
       Scenario.stationary,
       Scenario.moving,

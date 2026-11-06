@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-enum ProbeMode { tone, chirp }
+enum ProbeMode { tone, chirp, breathing }
 
 enum Scenario { stationary, moving, transmitterOff, silence, invalid }
 
@@ -21,11 +21,15 @@ class ExperimentConfig {
     this.seed = 42,
     this.startupSamples = 128,
     this.noiseAmplitude = 0.00001,
+    this.breathingGateMeters = 0.6,
   });
   final ProbeMode mode;
   final Scenario scenario;
   final int sampleRate, seed, startupSamples;
   final double durationSeconds, amplitude, toneHz, startHz, endHz;
+  final double breathingGateMeters;
+  static const breathingSeconds = 30.0;
+  static const calibrationRhythmHz = 0.25;
   final double sweepSeconds,
       rangeMeters,
       motionMeters,
@@ -45,7 +49,12 @@ class ExperimentConfig {
         sampleRate > 96000 ||
         !durationSeconds.isFinite ||
         durationSeconds < 1 ||
-        durationSeconds > 10 ||
+        (mode == ProbeMode.breathing
+            ? durationSeconds != breathingSeconds ||
+                  !breathingGateMeters.isFinite ||
+                  breathingGateMeters < .3 ||
+                  breathingGateMeters > 1
+            : durationSeconds > 10) ||
         !amplitude.isFinite ||
         amplitude <= 0 ||
         amplitude > 0.05 ||
@@ -75,12 +84,12 @@ class ExperimentConfig {
         noiseAmplitude < 0 ||
         noiseAmplitude > 0.01) {
       throw ArgumentError(
-        'Invalid configuration: duration 1–10 s, amplitude (0, 0.05], frequencies below Nyquist, range 0.3–1 m.',
+        'Invalid configuration: tone/ranging 1–10 s, breathing 30 s, amplitude (0, 0.05], frequencies below Nyquist, range 0.3–1 m.',
       );
     }
     // A real mixer also produces a sum component, possibly folded by sampling.
     // Keep that component away from the selected difference-frequency band.
-    if (mode == ProbeMode.chirp) {
+    if (mode != ProbeMode.tone) {
       final beatLimit = 2 * maxRange / soundSpeed * slope;
       final validSamples =
           sweepSamples - (2 * maxRange / soundSpeed * sampleRate).ceil();
@@ -114,6 +123,7 @@ class ExperimentConfig {
     'startupSamples': startupSamples,
     'noiseAmplitude': noiseAmplitude,
     'soundSpeedMetersPerSecond': soundSpeed,
+    if (mode == ProbeMode.breathing) 'breathingGateMeters': breathingGateMeters,
   };
 }
 

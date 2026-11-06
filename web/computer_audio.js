@@ -10,7 +10,11 @@
     const c = JSON.parse(configJson);
     if (!supported()) throw Error('Computer audio unavailable: secure context, microphone API and AudioWorklet required.');
     if (active) throw Error('A physical trial is already active.');
-    if (!(c.durationSeconds >= 1 && c.durationSeconds <= 10 && c.amplitude > 0 && c.amplitude <= .05) ||
+    const boundedDuration = c.mode === 'breathing'
+      ? c.durationSeconds === 30
+      : c.durationSeconds >= 1 && c.durationSeconds <= 10;
+    if (!boundedDuration || !Number.isInteger(c.sampleRate) || c.sampleRate < 22050 || c.sampleRate > 96000 ||
+        !(c.amplitude > 0 && c.amplitude <= .05) ||
         tx.length !== Math.round(c.sampleRate * c.durationSeconds) ||
         !tx.every(x => Number.isFinite(x) && Math.abs(x) <= .050001)) throw Error('Invalid physical waveform/limit.');
     const context = new AudioContext({sampleRate:c.sampleRate, latencyHint:'interactive'});

@@ -50,7 +50,7 @@ Future<void> main() async {
     interpolate(Float64List.fromList([0, 1, 0]), 0.5) == 0.5,
     'fractional delay interpolation',
   );
-  for (final mode in ProbeMode.values) {
+  for (final mode in [ProbeMode.tone, ProbeMode.chirp]) {
     for (final scenario in Scenario.values) {
       final config = ExperimentConfig(mode: mode, scenario: scenario);
       final audio = fixture(config), again = fixture(config);
@@ -166,7 +166,7 @@ Future<void> main() async {
       'independent signed Doppler at velocity $velocity m/s',
     );
   }
-  for (final mode in ProbeMode.values) {
+  for (final mode in [ProbeMode.tone, ProbeMode.chirp]) {
     for (final seed in [17, 99]) {
       for (final near in [false, true]) {
         final config = ExperimentConfig(

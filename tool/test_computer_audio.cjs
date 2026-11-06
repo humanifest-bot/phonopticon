@@ -83,5 +83,11 @@ function bridge(getUserMedia, mode='complete') {
  const invalid=bridge(async s=>s);
  await assert.rejects(invalid.api.start(JSON.stringify({sampleRate:48000,durationSeconds:11,amplitude:.02}),pcm),/Invalid physical waveform/);
  assert.equal(invalid.stats().emissions,0);
+ const breathing=bridge(async s=>s);
+ const longTrial=JSON.stringify({mode:'breathing',sampleRate:48000,durationSeconds:30,amplitude:.02});
+ const longResult=JSON.parse(await breathing.api.start(longTrial,new Float32Array(1440000)));
+ assert.equal(longResult.samples.length,1440000);
+ assert.deepEqual(breathing.stats(),{stopped:1,closed:1,emissions:1});
+ await assert.rejects(invalid.api.start(JSON.stringify({mode:'breathing',sampleRate:48000,durationSeconds:31,amplitude:.02}),new Float32Array(1488000)),/Invalid physical waveform/);
  console.log('PASS: bridge completion/cleanup, permission denial, late permission cancellation, no emission before grant, active Stop/partial capture, missing-input failure, duration guard');
 })().catch(e=>{console.error(e);process.exitCode=1;});

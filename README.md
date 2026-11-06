@@ -124,3 +124,7 @@ See [limitations](docs/LIMITATIONS.md), [build plan](BUILD_PLAN.md), [original b
 Three real MacBook microphone/speaker pilots have been recorded. Capture/playback worked, but the original fixture threshold did not detect the instructed motion. A new experimental received-tone ratio calibration is available; fitted pilot separation is not a fresh performance result.
 
 Use the local [calibration CLI and frozen evaluation procedure](docs/TONE_CALIBRATION.md), then choose **Load calibration profile** in physical Tone movement mode. **Begin 15-trial validation** guides five fresh trials per condition in a shuffled order, with manual Start/Next and retained failures. Export the complete local session before leaving/reloading. Keep the route, volume and physical setup unchanged. Unknown/probe-absent results are shown explicitly; no reliable detection claim is made until new results are examined.
+
+## FMCW breathing mode
+
+Select **Breathing** for a 30-second echo trace and a candidate slow-motion rhythm. For Mac calibration, use the same echo window and audio route across stationary, small-motion and transmitter-off trials. The app has a silent four-second pacer. Export each local trial bundle and recompute the comparison with `tool/verify_breathing.dart`. See the [calibration procedure and acceptance criteria](docs/WORK_RECEIPT.md#fmcw-breathing-mode-2026-11-05).

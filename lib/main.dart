@@ -65,6 +65,9 @@ class _ExperimentScreenState extends State<ExperimentScreen>
   List<Scenario>? validationPlan;
   final validationTrials = <Map<String, Object?>>[];
   bool slotRecorded = false;
+  bool get breathing => mode == ProbeMode.breathing;
+  double get runDuration =>
+      breathing ? ExperimentConfig.breathingSeconds : duration;
   bool get settingsLocked => runner.busy || validationPlan != null;
   @override
   void initState() {
@@ -114,9 +117,12 @@ class _ExperimentScreenState extends State<ExperimentScreen>
       ExperimentConfig(
         mode: mode,
         scenario: scenario,
-        durationSeconds: duration,
+        durationSeconds: runDuration,
         amplitude: amplitude,
-        rangeMeters: range,
+        rangeMeters: breathing ? .6 : range,
+        breathingGateMeters: range,
+        motionMeters: breathing ? .004 : .12,
+        motionHz: breathing ? ExperimentConfig.calibrationRhythmHz : .7,
         toneHz: nearUltrasonic ? 19000 : 10000,
         startHz: nearUltrasonic ? 18000 : 3000,
         endHz: nearUltrasonic ? 20000 : 10000,
@@ -370,26 +376,33 @@ class _ExperimentScreenState extends State<ExperimentScreen>
               ButtonSegment(
                 value: ProbeMode.tone,
                 label: Text('Tone movement'),
-                icon: Icon(Icons.graphic_eq),
               ),
               ButtonSegment(
                 value: ProbeMode.chirp,
                 label: Text('Chirp ranging'),
-                icon: Icon(Icons.radar),
+              ),
+              ButtonSegment(
+                value: ProbeMode.breathing,
+                label: Text('Breathing'),
               ),
             ],
+            showSelectedIcon: false,
             selected: {mode},
             onSelectionChanged: settingsLocked
                 ? null
                 : (s) => setState(() {
                     mode = s.single;
+                    if (breathing) {
+                      scenario = native ? Scenario.stationary : Scenario.moving;
+                      nearUltrasonic = false;
+                    }
                     clearResults();
                   }),
           ),
           const SizedBox(height: 18),
           DropdownButtonFormField<Scenario>(
             key: ValueKey(
-              '$native-${validationPlan == null ? 'free' : validationTrials.length}-$slotRecorded',
+              '$native-$mode-${validationPlan == null ? 'free' : validationTrials.length}-$slotRecorded',
             ),
             isExpanded: true,
             initialValue: scenario,
@@ -400,7 +413,9 @@ class _ExperimentScreenState extends State<ExperimentScreen>
             items: [
               DropdownMenuItem(
                 value: Scenario.moving,
-                child: Text('Moving reflector'),
+                child: Text(
+                  breathing ? 'Small, slow motion' : 'Moving reflector',
+                ),
               ),
               DropdownMenuItem(
                 value: Scenario.stationary,
@@ -445,17 +460,20 @@ class _ExperimentScreenState extends State<ExperimentScreen>
                     clearResults();
                   }),
           ),
-          slider(
-            'Duration · ${duration.toStringAsFixed(0)} s / 10 s maximum',
-            duration,
-            1,
-            10,
-            9,
-            (v) => setState(() {
-              duration = v;
-              clearResults();
-            }),
-          ),
+          if (breathing)
+            const Text('30-second foreground capture · manual Start and Stop')
+          else
+            slider(
+              'Duration · ${duration.toStringAsFixed(0)} s / 10 s maximum',
+              duration,
+              1,
+              10,
+              9,
+              (v) => setState(() {
+                duration = v;
+                clearResults();
+              }),
+            ),
           slider(
             'Digital peak amplitude · ${amplitude.toStringAsFixed(3)}',
             amplitude,
@@ -467,9 +485,9 @@ class _ExperimentScreenState extends State<ExperimentScreen>
               clearResults();
             }),
           ),
-          if (!native)
+          if (!native || breathing)
             slider(
-              'Fixture reflector range · ${range.toStringAsFixed(2)} m',
+              '${breathing ? 'Echo window center' : 'Fixture reflector range'} · ${range.toStringAsFixed(2)} m',
               range,
               0.3,
               1.0,
@@ -479,7 +497,7 @@ class _ExperimentScreenState extends State<ExperimentScreen>
                 clearResults();
               }),
             ),
-          if (!native)
+          if (!native && !breathing)
             const Text(
               '48 kHz · seed 42 · ±0.12 m motion at 0.7 Hz. Fixture parameters are not measurement results.',
               style: TextStyle(fontSize: 12, color: Color(0xff526377)),
@@ -528,6 +546,29 @@ class _ExperimentScreenState extends State<ExperimentScreen>
               style: TextStyle(color: Color(0xffa25d18)),
             ),
           if (native && mode == ProbeMode.tone) ...calibrationControls(),
+          if (breathing) ...[
+            const SizedBox(height: 8),
+            Text(
+              scenario == Scenario.stationary
+                  ? 'Keep the reflector and computer still for the full capture.'
+                  : 'Move the reflector gently between the marks. Follow the visual pacer, one cycle every 4 seconds.',
+            ),
+            if (scenario == Scenario.moving ||
+                scenario == Scenario.transmitterOff)
+              LinearProgressIndicator(
+                semanticsLabel: 'Reflector pacer, near to far',
+                value:
+                    .5 -
+                    .5 *
+                        math.cos(
+                          2 *
+                              math.pi *
+                              ExperimentConfig.calibrationRhythmHz *
+                              runner.elapsed,
+                        ),
+              ),
+            const SizedBox(height: 8),
+          ],
           Row(
             children: [
               Expanded(
@@ -555,12 +596,12 @@ class _ExperimentScreenState extends State<ExperimentScreen>
           const SizedBox(height: 10),
           LinearProgressIndicator(
             value: busy
-                ? runner.elapsed / duration
+                ? runner.elapsed / runDuration
                 : (runner.state == TrialState.complete ? 1 : 0),
           ),
           const SizedBox(height: 8),
           Text(
-            '${runner.state.name.toUpperCase()} · ${busy ? (duration - runner.elapsed).clamp(0, duration).toStringAsFixed(1) : '0.0'} s remaining',
+            '${runner.state.name.toUpperCase()} · ${busy ? (runDuration - runner.elapsed).clamp(0, runDuration).toStringAsFixed(1) : '0.0'} s remaining',
             key: const Key('trial-state'),
           ),
           if (runner.error != null)
@@ -584,6 +625,8 @@ class _ExperimentScreenState extends State<ExperimentScreen>
                 ? 'Run a trial to inspect audio-derived results.'
                 : !r.valid
                 ? 'Unknown · analysis unavailable'
+                : breathing
+                ? 'Experimental echo trace · compare with both controls'
                 : r.movementDetected
                 ? (native
                       ? (r.settings['calibrationProfile'] != null
@@ -631,12 +674,18 @@ class _ExperimentScreenState extends State<ExperimentScreen>
             TrialPlot(result: r),
             const SizedBox(height: 15),
             Text(
-              r.settings['calibrationProfile'] == null
+              breathing
+                  ? 'Slow echo variation over time'
+                  : r.settings['calibrationProfile'] == null
                   ? 'Movement score · threshold ${r.threshold} · at least 2 frames'
                   : 'Received sideband/carrier ratio · trial 80th percentile threshold ${r.threshold.toStringAsPrecision(3)}',
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             TrialPlot(result: r, movement: true),
+            if (breathing)
+              Text(
+                'Candidate rhythm: ${(r.settings['peakHz'] as double).toStringAsFixed(2)} Hz · periodic fraction ${(r.settings['periodicFraction'] as double).toStringAsFixed(2)}. Echo variation is relative to the direct probe.',
+              ),
             if (r.settings['calibrationProfile'] != null)
               Text(
                 'Trial ratio score: ${r.settings['trialScore']} · usable carrier fraction: ${r.settings['carrierFraction']} · experimental calibration',
@@ -654,6 +703,10 @@ class _ExperimentScreenState extends State<ExperimentScreen>
             Builder(
               builder: (_) {
                 final f = r.frames[selectedFrame.clamp(0, r.frames.length - 1)];
+                if (breathing)
+                  return Text(
+                    '${f.time.toStringAsFixed(3)} s · echo variation ${f.movement.toStringAsFixed(4)}',
+                  );
                 return Text(
                   '${f.time.toStringAsFixed(3)} s · movement ${f.movement.toStringAsFixed(4)}'
                   '${mode == ProbeMode.chirp ? ' · equivalent range ${f.range == null ? 'unavailable' : '${f.range!.toStringAsFixed(3)} m'}' : ' · single tone provides no absolute range'}',

@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import '../domain/experiment.dart';
+import 'breathing.dart';
 import 'spectrum.dart';
 
 AnalysisResult analyze(AudioCapture audio) {
@@ -26,7 +27,11 @@ AnalysisResult analyze(AudioCapture audio) {
       axisLabel: '',
       threshold: 0.15,
     );
-  return c.mode == ProbeMode.tone ? _tone(audio) : _chirp(audio);
+  return switch (c.mode) {
+    ProbeMode.tone => _tone(audio),
+    ProbeMode.chirp => _chirp(audio),
+    ProbeMode.breathing => analyzeBreathing(audio),
+  };
 }
 
 AnalysisResult _tone(AudioCapture audio) {

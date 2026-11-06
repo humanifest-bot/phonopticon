@@ -3,24 +3,31 @@ import 'dart:typed_data';
 import '../domain/experiment.dart';
 
 // Decode the authored bundle format; no file/network access here.
-AudioCapture readPhysicalBundle(Map<String, dynamic> data) {
+AudioCapture readPhysicalBundle(
+  Map<String, dynamic> data, {
+  ProbeMode mode = ProbeMode.tone,
+}) {
   final m = data['manifest'] as Map;
   final c = m['config'] as Map;
   final files = data['files'] as Map;
   final actual = m['actualAudioFormat'] as Map;
   if (m['schemaVersion'] != 1 ||
       m['sourceKind'] != 'PHYSICAL' ||
-      c['mode'] != 'tone' ||
+      c['mode'] != mode.name ||
       actual['channels'] != 1) {
-    throw FormatException('Expected a physical mono tone bundle');
+    throw FormatException('Expected a physical mono ${mode.name} bundle');
   }
   final config = ExperimentConfig(
-    mode: ProbeMode.tone,
+    mode: mode,
     scenario: Scenario.values.byName(c['scenario'] as String),
     sampleRate: c['sampleRate'] as int,
     durationSeconds: (c['durationSeconds'] as num).toDouble(),
     amplitude: (c['amplitude'] as num).toDouble(),
     toneHz: (c['toneHz'] as num).toDouble(),
+    startHz: (c['startHz'] as num?)?.toDouble() ?? 3000,
+    endHz: (c['endHz'] as num?)?.toDouble() ?? 10000,
+    sweepSeconds: (c['actualSweepSeconds'] as num?)?.toDouble() ?? .02,
+    breathingGateMeters: (c['breathingGateMeters'] as num?)?.toDouble() ?? .6,
   );
   config.validate();
   Float64List pcm(String key, int rate) {

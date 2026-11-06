@@ -8,7 +8,9 @@ class TrialPlot extends StatelessWidget {
   final bool movement;
   @override
   Widget build(BuildContext context) => Semantics(
-    label: movement
+    label: movement && result.settings.containsKey('breathingAlgorithm')
+        ? 'Detrended echo variation over time'
+        : movement
         ? 'Movement score over time. Threshold ${result.threshold}.'
         : '${result.axisLabel} over time. See frame inspector for numerical values.',
     child: SizedBox(
@@ -81,11 +83,16 @@ class _PlotPainter extends CustomPainter {
         Offset(box.left, size.height - 14),
       );
     } else {
+      final signed = r.settings.containsKey('breathingAlgorithm');
       final maxScore = math.max(
-        r.threshold * 2,
-        r.frames.map((f) => f.movement).reduce(math.max),
+        math.max(1e-12, r.threshold * 2),
+        r.frames
+            .map((f) => signed ? f.movement.abs() : f.movement)
+            .reduce(math.max),
       );
-      final thresholdY = box.bottom - r.threshold / maxScore * box.height;
+      final origin = signed ? box.center.dy : box.bottom;
+      final scale = box.height / (signed ? 2 : 1) / maxScore;
+      final thresholdY = origin - r.threshold * scale;
       canvas.drawLine(
         Offset(box.left, thresholdY),
         Offset(box.right, thresholdY),
@@ -99,7 +106,7 @@ class _PlotPainter extends CustomPainter {
       for (var i = 0; i < r.frames.length; i++) {
         final f = r.frames[i];
         final x = box.left + f.time / duration * box.width,
-            y = box.bottom - f.movement / maxScore * box.height;
+            y = origin - f.movement * scale;
         if (i == 0) {
           path.moveTo(x, y);
         } else {

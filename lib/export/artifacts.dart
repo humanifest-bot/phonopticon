@@ -43,21 +43,32 @@ String movementSvg(AnalysisResult r, {String sourceKind = 'SIMULATED'}) {
   if (r.frames.isEmpty)
     return '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="240"><text x="20" y="40">$sourceKind — no valid analysis</text></svg>';
   final maxTime = r.frames.last.time;
+  final signed = r.settings.containsKey('breathingAlgorithm');
   final maxValue = math.max(
-    r.threshold * 2,
-    r.frames.map((f) => f.movement).reduce(math.max),
+    math.max(1e-12, r.threshold * 2),
+    r.frames
+        .map((f) => signed ? f.movement.abs() : f.movement)
+        .reduce(math.max),
   );
+  final origin = signed ? 125.0 : 200.0;
+  final scale = (signed ? 75.0 : 150.0) / maxValue;
   final points = r.frames
       .map(
         (f) =>
-            '${(40 + f.time / maxTime * 720).toStringAsFixed(2)},${(200 - f.movement / maxValue * 150).toStringAsFixed(2)}',
+            '${(40 + f.time / maxTime * 720).toStringAsFixed(2)},${(origin - f.movement * scale).toStringAsFixed(2)}',
       )
       .join(' ');
-  final y = 200 - r.threshold / maxValue * 150;
+  final y = origin - r.threshold * scale;
   final rule = r.settings['calibrationProfile'] == null
       ? 'fixture'
       : 'experimental calibrated';
-  return '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="250" viewBox="0 0 800 250"><rect width="800" height="250" fill="#f6f8fb"/><text x="40" y="25">$sourceKind movement score — $rule threshold ${r.threshold}</text><line x1="40" x2="760" y1="$y" y2="$y" stroke="#b05820" stroke-dasharray="6 4"/><polyline points="$points" fill="none" stroke="#006d77" stroke-width="2"/><text x="40" y="230">Time (seconds), 0–${maxTime.toStringAsFixed(2)}; normalized score 0–${maxValue.toStringAsFixed(3)}</text></svg>';
+  final label = signed
+      ? 'Detrended echo variation'
+      : 'Movement score ($rule threshold ${r.threshold})';
+  final bounds = signed
+      ? '±${maxValue.toStringAsPrecision(3)}'
+      : '0–${maxValue.toStringAsFixed(3)}';
+  return '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="250" viewBox="0 0 800 250"><rect width="800" height="250" fill="#f6f8fb"/><text x="40" y="25">$sourceKind $label</text><line x1="40" x2="760" y1="$y" y2="$y" stroke="#b05820" stroke-dasharray="6 4"/><polyline points="$points" fill="none" stroke="#006d77" stroke-width="2"/><text x="40" y="230">Time (seconds), 0–${maxTime.toStringAsFixed(2)} · relative scale $bounds</text></svg>';
 }
 
 String spectrumSvg(AnalysisResult r, {String sourceKind = 'SIMULATED'}) {
@@ -106,7 +117,11 @@ Map<String, Object?> artifactBundle(
         axisLabel: '',
         threshold: 0.15,
       );
-  final csv = StringBuffer('seconds,movement,equivalent_range_m\n');
+  final csv = StringBuffer(
+    c.config.mode == ProbeMode.breathing
+        ? 'seconds,detrended_echo_ratio,equivalent_range_m\n'
+        : 'seconds,movement,equivalent_range_m\n',
+  );
   for (final f in r.frames) {
     csv.writeln('${f.time},${f.movement},${f.range ?? ''}');
   }

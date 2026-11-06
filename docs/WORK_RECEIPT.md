@@ -141,3 +141,20 @@ Inspected new test entry points and imports: standard/local Dart math and in-mem
 Executed cached Flutter `analyze --no-pub`: exit 0, no issues. Executed `test --no-pub`: exit 0, **16 tests passed**, including the existing 71 numerical assertions, seven calibration tests and a guided validation lifecycle test. Tests cover an independent Doppler sideband, gain invariance, off/weak-probe rejection, route changes, invalid profiles, training reuse, calibration overlap, label independence, WAV decoding and manual Start/Next without automatic capture.
 
 Executed the exact calibration CLI command in TONE_CALIBRATION.md with umask 077. It recomputed the three original physical WAV analyses and created a new private JSON profile: id 645c30b0, threshold 0.0033693911183156873, carrier floor 2.5168013685899415e-9. Pilot data is training only. Fresh held-out physical evaluation remains pending at this entry; no calibrated performance result is asserted.
+
+## FMCW breathing mode, 2026-11-05
+
+The operator redirected physical testing from leaning to small, slow reflector motion. Breathing mode uses a manual 30-second capture, with the audible 3–10 kHz chirp and digital peak amplitude 0.020 as the starting settings. The Mac trial uses the same echo window, room, volume and route for stationary, 0.25 Hz motion, and transmitter-off motion. Move a rigid reflector 5–10 mm peak-to-peak between marks without scraping and use the silent four-second visual pacer. The operator's timing and travel are approximate references.
+
+The analysis matches repeated chirps to locate the direct probe modulo a sweep. It compares the early and late alignment, coherently averages sweeps in about 100 ms groups, and tracks complex echo coefficients across a fixed window of ±9 cm around the selected equivalent range. After direct-probe phase correction and detrending, it measures periodic variation at 0.10–0.60 Hz. This implementation is inspired by [ApneaApp's distance-gated periodic echo tracking](https://apnea.cs.washington.edu/apneaapp.pdf#page=4). Its algorithm and 3–10 kHz test band differ from the paper. Echo ratios do not measure chest displacement in millimeters.
+
+After each attempt, use **Export local trial bundle**. Verify the set with the existing cached Dart SDK and a new output path:
+
+```sh
+umask 077
+/opt/homebrew/Caskroom/flutter/3.47.4/flutter/bin/cache/dart-sdk/bin/dart --disable-dart-dev tool/verify_breathing.dart STATIONARY.json MOTION.json OFF.json --out NEW_REPORT.json
+```
+
+The verifier independently recomputes the traces from the WAVs. Predeclared calibration criteria require an available stationary trace without a matching strong rhythm, an unavailable off trace due to absent chirp coherence, and moving rhythm within 0.05 Hz of 0.25 Hz. Moving periodic fraction must reach 0.25, and normalized periodic RMS must reach both 0.001 and three times stationary RMS. Each control and any analysis failure is reported. Meeting these criteria supports this calibration run only. Physical sensitivity and breathing rate remain separate tests.
+
+Offline verification used cached Flutter `test --no-pub` and `analyze --no-pub` with the SDK prefix above. All 17 tests passed, including the 71 original numerical checks, and analyzer reported no issues. The synthetic breathing fixture recovered the 0.25 Hz rhythm with an 8 mm peak-to-peak reflector and over-one-sweep latency. Its stationary trace stayed below the amplitude floor and its transmitter-off input was rejected. `node tool/test_computer_audio.cjs` passed the mocked capture checks, including the new 30-second limit. `dart --disable-dart-dev tool/verify_breathing.dart` with no arguments printed usage and exited 2. The test runner reads cached SDK assets and writes local build metadata and temporary fixture renders. The replay tool reads named local WAV bundles and writes a new report. This entry records synthetic and mocked checks while the Mac captures are pending.
