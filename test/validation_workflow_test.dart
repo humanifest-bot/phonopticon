@@ -26,7 +26,7 @@ class MockPhysicalBackend implements AudioBackend {
         for (var i = 0; i < c.samples; i++)
           c.transmitterOn
               ? .004 * math.sin(2 * math.pi * 10000 * i / 48000)
-              : 0,
+              : .0001 * math.sin(2 * math.pi * 440 * i / 48000),
       ]),
       startedUtc: DateTime.utc(2026),
       sourceKind: 'PHYSICAL',

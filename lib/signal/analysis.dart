@@ -3,6 +3,8 @@ import '../domain/experiment.dart';
 import 'breathing.dart';
 import 'spectrum.dart';
 
+const silentMicrophoneInput = 'No microphone signal (all samples are zero)';
+
 AnalysisResult analyze(AudioCapture audio) {
   final c = audio.config;
   final quality = <String>[...audio.status];
@@ -18,6 +20,11 @@ AnalysisResult analyze(AudioCapture audio) {
       audio.emitted.any((x) => !x.isFinite))
     quality.add('Nonfinite PCM');
   if (audio.received.any((x) => x.abs() >= 1)) quality.add('Clipped PCM');
+  if (quality.isEmpty &&
+      audio.sourceKind == 'PHYSICAL' &&
+      audio.received.every((x) => x == 0)) {
+    quality.add(silentMicrophoneInput);
+  }
   if (quality.isNotEmpty)
     return AnalysisResult(
       axis: [],

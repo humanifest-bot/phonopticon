@@ -11,7 +11,9 @@ import 'domain/experiment.dart';
 import 'export/artifacts.dart';
 import 'export/export_bundle.dart';
 import 'runner/trial_runner.dart';
+import 'signal/analysis.dart' show silentMicrophoneInput;
 import 'ui/plots.dart';
+import 'ui/trial_guide.dart';
 
 // Keep controls inspectable by assistive tools without an invisible opt-in.
 // The handle intentionally lives for the lifetime of the application.
@@ -276,13 +278,6 @@ class _ExperimentScreenState extends State<ExperimentScreen>
         'Validation ${validationTrials.length}/15 saved · ${slotRecorded ? 'review result' : 'press Start when ready'}',
         key: const Key('validation-progress'),
       ),
-      Text(
-        scenario == Scenario.stationary
-            ? 'Sit still and avoid speaking for the full trial.'
-            : scenario == Scenario.moving
-            ? 'Lean toward/away about 10 cm, once per second. Keep the computer fixed.'
-            : 'No probe tone. Repeat the same leaning motion; keep system volume unchanged.',
-      ),
       if (slotRecorded && validationTrials.length < 15)
         FilledButton(
           key: const Key('next-validation'),
@@ -361,6 +356,61 @@ class _ExperimentScreenState extends State<ExperimentScreen>
   Widget build(BuildContext context) {
     final r = runner.result;
     final busy = runner.busy;
+    final colors = Theme.of(context).colorScheme;
+    final recording = runner.state == TrialState.running && runner.elapsed > 0;
+    final probeOff =
+        scenario == Scenario.transmitterOff || scenario == Scenario.silence;
+    final offControlRecorded =
+        breathing &&
+        scenario == Scenario.transmitterOff &&
+        r != null &&
+        r.quality.length == 1 &&
+        r.quality.single == 'No coherent chirp probe found';
+    final (status, statusIcon, statusColor) = switch (runner.state) {
+      TrialState.idle => (
+        'IDLE · Ready to start',
+        Icons.play_circle_outline,
+        colors.primary,
+      ),
+      TrialState.preparing => (
+        'Preparing audio',
+        Icons.hourglass_empty,
+        colors.primary,
+      ),
+      TrialState.running => (
+        recording
+            ? (native ? 'Recording' : 'Running simulation')
+            : 'Preparing audio',
+        recording && native ? Icons.fiber_manual_record : Icons.hourglass_empty,
+        recording && native ? colors.error : colors.primary,
+      ),
+      TrialState.stopping => (
+        'Stopping',
+        Icons.stop_circle_outlined,
+        colors.error,
+      ),
+      TrialState.complete => (
+        'COMPLETE · Ready to export',
+        Icons.check_circle_outline,
+        colors.primary,
+      ),
+      TrialState.cancelled => (
+        'CANCELLED',
+        Icons.stop_circle_outlined,
+        colors.onSurfaceVariant,
+      ),
+      TrialState.failed when offControlRecorded => (
+        'Control recorded · Ready to export',
+        Icons.volume_off_outlined,
+        colors.primary,
+      ),
+      TrialState.failed => (
+        'FAILED · Check the recording',
+        Icons.error_outline,
+        colors.error,
+      ),
+    };
+    final remaining = (runDuration - runner.elapsed).clamp(0, runDuration);
     final controls = panel(
       Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -540,35 +590,24 @@ class _ExperimentScreenState extends State<ExperimentScreen>
           const SizedBox(height: 14),
           if (native)
             Text(
-              computerBackendAvailable()
-                  ? 'Start requests microphone permission and plays a low-level sound. Use built-in speakers; keep system volume low. No upload. Thresholds are uncalibrated.'
+              runner.backend.capabilities.available
+                  ? probeOff
+                        ? 'Start records the microphone with the speaker probe off.'
+                        : 'Start records the microphone and plays a low-level probe. Use built-in speakers at low volume.'
                   : 'Native backend is not implemented. No silent fallback to simulation.',
               style: TextStyle(color: Color(0xffa25d18)),
             ),
           if (native && mode == ProbeMode.tone) ...calibrationControls(),
-          if (breathing) ...[
-            const SizedBox(height: 8),
-            Text(
-              scenario == Scenario.stationary
-                  ? 'Keep the reflector and computer still for the full capture.'
-                  : 'Move the reflector gently between the marks. Follow the visual pacer, one cycle every 4 seconds.',
-            ),
-            if (scenario == Scenario.moving ||
-                scenario == Scenario.transmitterOff)
-              LinearProgressIndicator(
-                semanticsLabel: 'Reflector pacer, near to far',
-                value:
-                    .5 -
-                    .5 *
-                        math.cos(
-                          2 *
-                              math.pi *
-                              ExperimentConfig.calibrationRhythmHz *
-                              runner.elapsed,
-                        ),
-              ),
-            const SizedBox(height: 8),
-          ],
+          const SizedBox(height: 12),
+          TrialGuide(
+            mode: mode,
+            scenario: scenario,
+            physical: native,
+            validatingTone: validationPlan != null,
+            recording: recording,
+            elapsed: runner.elapsed,
+          ),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
@@ -588,6 +627,7 @@ class _ExperimentScreenState extends State<ExperimentScreen>
               OutlinedButton.icon(
                 key: const Key('stop'),
                 onPressed: busy ? runner.stop : null,
+                style: OutlinedButton.styleFrom(foregroundColor: colors.error),
                 icon: const Icon(Icons.stop),
                 label: const Text('Stop'),
               ),
@@ -595,21 +635,45 @@ class _ExperimentScreenState extends State<ExperimentScreen>
           ),
           const SizedBox(height: 10),
           LinearProgressIndicator(
+            semanticsLabel: 'Trial progress',
+            color: statusColor,
             value: busy
-                ? runner.elapsed / runDuration
-                : (runner.state == TrialState.complete ? 1 : 0),
+                ? (runner.elapsed / runDuration).clamp(0.0, 1.0)
+                : (runner.state == TrialState.complete || offControlRecorded
+                      ? 1
+                      : 0),
           ),
           const SizedBox(height: 8),
-          Text(
-            '${runner.state.name.toUpperCase()} · ${busy ? (runDuration - runner.elapsed).clamp(0, runDuration).toStringAsFixed(1) : '0.0'} s remaining',
-            key: const Key('trial-state'),
+          Row(
+            children: [
+              Icon(statusIcon, size: 20, color: statusColor),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    status,
+                    key: const Key('trial-state'),
+                    style: TextStyle(
+                      color: statusColor,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+              if (busy) Text('${remaining.toStringAsFixed(1)} s left'),
+            ],
           ),
-          if (runner.error != null)
+          if (runner.error != null && !offControlRecorded)
             Padding(
               padding: const EdgeInsets.only(top: 10),
+              child: Text(runner.error!, style: TextStyle(color: colors.error)),
+            ),
+          if (r?.quality.contains(silentMicrophoneInput) ?? false)
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
               child: Text(
-                runner.error!,
-                style: const TextStyle(color: Colors.red),
+                'Check the Mac’s Sound input meter. Then try Tone movement → Transmitter off for 4 seconds while speaking.',
               ),
             ),
         ],
@@ -623,6 +687,10 @@ class _ExperimentScreenState extends State<ExperimentScreen>
             'Inspect the evidence',
             r == null
                 ? 'Run a trial to inspect audio-derived results.'
+                : offControlRecorded
+                ? (native
+                      ? 'The microphone recorded with the chirp off.'
+                      : 'Simulated ambient audio with the chirp off.')
                 : !r.valid
                 ? 'Unknown · analysis unavailable'
                 : breathing
@@ -650,16 +718,11 @@ class _ExperimentScreenState extends State<ExperimentScreen>
                     SizedBox(height: 16),
                     Text('Your experiment starts here'),
                     SizedBox(height: 8),
-                    Text(
-                      native
-                          ? 'Press Start to request microphone access and play a low-level probe.'
-                          : 'Choose a mode and press Start. No audio is emitted.',
-                    ),
                   ],
                 ),
               ),
             ),
-          if (r != null && !r.valid)
+          if (r != null && !r.valid && !offControlRecorded)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 40),
               child: Text(r.quality.join('\n')),
@@ -721,7 +784,7 @@ class _ExperimentScreenState extends State<ExperimentScreen>
             ),
           ],
           const Divider(height: 30),
-          OutlinedButton.icon(
+          FilledButton.tonalIcon(
             key: const Key('export'),
             onPressed: runner.capture == null || busy || exporting
                 ? null
