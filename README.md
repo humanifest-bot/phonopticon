@@ -127,4 +127,6 @@ Use the local [calibration CLI and frozen evaluation procedure](docs/TONE_CALIBR
 
 ## FMCW breathing mode
 
+For the four-trial sequence, choose **Computer mic + speaker**, then **Begin guided calibration**. Each step sets its own mode and condition. Press Start and export each bundle, then confirm the download and select Next trial. Failed or silent captures can be retried. Progress resets on page reload, so keep the exported files.
+
 Select **Breathing** for a 30-second echo trace and a candidate slow-motion rhythm. For Mac calibration, use the same echo window and audio route across stationary, small-motion and transmitter-off trials. The app has a silent four-second pacer. Export each local trial bundle and recompute the comparison with `tool/verify_breathing.dart`. See the [calibration procedure and acceptance criteria](docs/WORK_RECEIPT.md#fmcw-breathing-mode-2026-11-05).

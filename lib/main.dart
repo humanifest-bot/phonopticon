@@ -55,6 +55,20 @@ class ExperimentScreen extends StatefulWidget {
 
 class _ExperimentScreenState extends State<ExperimentScreen>
     with WidgetsBindingObserver {
+  static const _guidedTrialsJson = '''
+  [
+    {"id":"mic-check","mode":"tone","scenario":"transmitterOff","durationSeconds":4,"amplitude":0.02,"nearUltrasonic":false,"instruction":"Speak during the recording, then export it."},
+    {"id":"stationary","mode":"breathing","scenario":"stationary","durationSeconds":30,"amplitude":0.02,"breathingGateMeters":0.6,"nearUltrasonic":false,"instruction":"Keep the Mac and reflector still."},
+    {"id":"motion","mode":"breathing","scenario":"moving","durationSeconds":30,"amplitude":0.02,"breathingGateMeters":0.6,"nearUltrasonic":false,"instruction":"Move the reflector 5–10 mm, two seconds each way."},
+    {"id":"transmitter-off","mode":"breathing","scenario":"transmitterOff","durationSeconds":30,"amplitude":0.02,"breathingGateMeters":0.6,"nearUltrasonic":false,"instruction":"Repeat the small motion with the chirp off."}
+  ]
+  ''';
+  late final List<Map<String, dynamic>> guidedTrials =
+      (jsonDecode(_guidedTrialsJson) as List)
+          .map((step) => Map<String, dynamic>.from(step as Map))
+          .toList();
+  int? guidedIndex;
+  bool guidedExportRequested = false;
   late TrialRunner runner;
   ProbeMode mode = ProbeMode.tone;
   Scenario scenario = Scenario.moving;
@@ -70,7 +84,24 @@ class _ExperimentScreenState extends State<ExperimentScreen>
   bool get breathing => mode == ProbeMode.breathing;
   double get runDuration =>
       breathing ? ExperimentConfig.breathingSeconds : duration;
-  bool get settingsLocked => runner.busy || validationPlan != null;
+  bool get settingsLocked =>
+      runner.busy || validationPlan != null || guidedIndex != null;
+
+  void applyGuidedStep(int index) {
+    final step = guidedTrials[index];
+    setState(() {
+      guidedIndex = index;
+      guidedExportRequested = false;
+      mode = ProbeMode.values.byName(step['mode'] as String);
+      scenario = Scenario.values.byName(step['scenario'] as String);
+      duration = (step['durationSeconds'] as num).toDouble();
+      amplitude = (step['amplitude'] as num).toDouble();
+      range = (step['breathingGateMeters'] as num?)?.toDouble() ?? .6;
+      nearUltrasonic = step['nearUltrasonic'] as bool;
+      clearResults();
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -136,6 +167,7 @@ class _ExperimentScreenState extends State<ExperimentScreen>
       if (native &&
           mode == ProbeMode.tone &&
           calibration != null &&
+          guidedIndex == null &&
           capture != null &&
           runner.result != null) {
         runner.result = calibration!.apply(capture, runner.result!);
@@ -307,7 +339,12 @@ class _ExperimentScreenState extends State<ExperimentScreen>
       final id = 'phonopticon-${DateTime.now().toUtc().microsecondsSinceEpoch}';
       final bundle = artifactBundle(capture, runner.result, trialId: id);
       final message = await saveBundle(jsonEncode(bundle), id);
-      if (mounted) setState(() => exportStatus = message);
+      if (mounted) {
+        setState(() {
+          exportStatus = message;
+          guidedExportRequested = guidedIndex != null;
+        });
+      }
     } catch (e) {
       if (mounted) setState(() => exportStatus = 'Export failed: $e');
     } finally {
@@ -366,6 +403,11 @@ class _ExperimentScreenState extends State<ExperimentScreen>
         r != null &&
         r.quality.length == 1 &&
         r.quality.single == 'No coherent chirp probe found';
+    final guidedCanAdvance =
+        guidedExportRequested &&
+        runner.capture != null &&
+        !runner.capture!.cancelled &&
+        (r?.valid == true || offControlRecorded);
     final (status, statusIcon, statusColor) = switch (runner.state) {
       TrialState.idle => (
         'IDLE · Ready to start',
@@ -411,6 +453,7 @@ class _ExperimentScreenState extends State<ExperimentScreen>
       ),
     };
     final remaining = (runDuration - runner.elapsed).clamp(0, runDuration);
+    final guidedStep = guidedIndex == null ? null : guidedTrials[guidedIndex!];
     final controls = panel(
       Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -421,6 +464,42 @@ class _ExperimentScreenState extends State<ExperimentScreen>
                 ? 'Computer microphone + speaker · experimental'
                 : 'Synthetic audio · no speaker or microphone access',
           ),
+          if (guidedStep == null && validationPlan == null)
+            OutlinedButton.icon(
+              key: const Key('begin-guided'),
+              onPressed:
+                  !busy && native && runner.backend.capabilities.available
+                  ? () => applyGuidedStep(0)
+                  : null,
+              icon: const Icon(Icons.playlist_play),
+              label: const Text('Begin guided calibration'),
+            ),
+          if (guidedStep == null && !native)
+            const Text(
+              'Select Computer mic + speaker to begin guided calibration.',
+            ),
+          if (guidedStep != null) ...[
+            Text(
+              'Trial ${guidedIndex! + 1} of ${guidedTrials.length} · ${guidedStep['id']}',
+              key: const Key('guided-progress'),
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            Text(guidedStep['instruction'] as String),
+            const Text(
+              'Export each trial before continuing. Progress resets if this page reloads.',
+            ),
+            TextButton(
+              key: const Key('end-guided'),
+              onPressed: busy || exporting
+                  ? null
+                  : () => setState(() {
+                      guidedIndex = null;
+                      guidedExportRequested = false;
+                    }),
+              child: const Text('End guided sequence'),
+            ),
+            const SizedBox(height: 12),
+          ],
           SegmentedButton<ProbeMode>(
             segments: const [
               ButtonSegment(
@@ -597,7 +676,8 @@ class _ExperimentScreenState extends State<ExperimentScreen>
                   : 'Native backend is not implemented. No silent fallback to simulation.',
               style: TextStyle(color: Color(0xffa25d18)),
             ),
-          if (native && mode == ProbeMode.tone) ...calibrationControls(),
+          if (native && mode == ProbeMode.tone && guidedStep == null)
+            ...calibrationControls(),
           const SizedBox(height: 12),
           TrialGuide(
             mode: mode,
@@ -616,6 +696,7 @@ class _ExperimentScreenState extends State<ExperimentScreen>
                   onPressed:
                       busy ||
                           slotRecorded ||
+                          (guidedStep != null && guidedCanAdvance) ||
                           !runner.backend.capabilities.available
                       ? null
                       : start,
@@ -676,6 +757,37 @@ class _ExperimentScreenState extends State<ExperimentScreen>
                 'Check the Mac’s Sound input meter. Then try Tone movement → Transmitter off for 4 seconds while speaking.',
               ),
             ),
+          if (guidedStep != null && guidedExportRequested && !guidedCanAdvance)
+            const Text(
+              'This capture needs attention. Retry the trial before continuing.',
+            ),
+          if (guidedStep != null && guidedCanAdvance) ...[
+            const SizedBox(height: 12),
+            Text(
+              guidedIndex == 0
+                  ? 'Confirm the microphone check captured your voice before continuing.'
+                  : 'Confirm the trial bundle downloaded before continuing.',
+            ),
+            FilledButton.icon(
+              key: const Key('next-guided'),
+              onPressed: () {
+                if (guidedIndex! + 1 == guidedTrials.length) {
+                  setState(() {
+                    guidedIndex = null;
+                    guidedExportRequested = false;
+                  });
+                } else {
+                  applyGuidedStep(guidedIndex! + 1);
+                }
+              },
+              icon: const Icon(Icons.arrow_forward),
+              label: Text(
+                guidedIndex! + 1 == guidedTrials.length
+                    ? 'Finish guided sequence'
+                    : 'Next trial',
+              ),
+            ),
+          ],
         ],
       ),
     );

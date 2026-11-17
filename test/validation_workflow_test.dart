@@ -43,6 +43,44 @@ class MockPhysicalBackend implements AudioBackend {
 
 void main() {
   testWidgets(
+    'guided calibration requires manual capture and export before advancing',
+    (tester) async {
+      tester.view.physicalSize = const Size(1400, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final backend = MockPhysicalBackend();
+      await tester.pumpWidget(PhonopticonApp(backend: backend));
+      await tester.tap(find.byKey(const Key('begin-guided')));
+      await tester.pumpAndSettle();
+      expect(find.text('Trial 1 of 4 · mic-check'), findsOneWidget);
+      expect(backend.starts, 0);
+      expect(find.byKey(const Key('next-guided')), findsNothing);
+      final start = find.byKey(const Key('start'));
+      await tester.ensureVisible(start);
+      await tester.tap(start);
+      await tester.pumpAndSettle();
+      expect(backend.starts, 1);
+      expect(find.byKey(const Key('next-guided')), findsNothing);
+      final export = find.byKey(const Key('export'));
+      await tester.ensureVisible(export);
+      await tester.runAsync(() async {
+        await tester.tap(export);
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+      });
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('next-guided')), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const Key('next-guided')));
+      await tester.tap(find.byKey(const Key('next-guided')));
+      await tester.pumpAndSettle();
+      expect(find.text('Trial 2 of 4 · stationary'), findsOneWidget);
+      expect(backend.starts, 1);
+      expect(find.text('Hold still'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'validation requires manual Start and Next, locks settings, and retains one slot per attempt',
     (tester) async {
       tester.view.physicalSize = const Size(1400, 2400);
