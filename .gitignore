@@ -5,3 +5,7 @@ build/
 coverage/
 *.log
 .DS_Store
+android/key.properties
+android/**/*.keystore
+android/**/*.jks
+ios/Podfile.lock

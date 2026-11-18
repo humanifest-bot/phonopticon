@@ -69,13 +69,14 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 300));
       });
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('next-guided')), findsOneWidget);
-      await tester.ensureVisible(find.byKey(const Key('next-guided')));
-      await tester.tap(find.byKey(const Key('next-guided')));
-      await tester.pumpAndSettle();
-      expect(find.text('Trial 2 of 4 · stationary'), findsOneWidget);
+      expect(find.byKey(const Key('next-guided')), findsNothing);
+      expect(find.textContaining('Temporary file written'), findsOneWidget);
+      expect(
+        find.textContaining('Confirm the trial bundle downloaded'),
+        findsNothing,
+      );
+      expect(find.text('Trial 1 of 4 · mic-check'), findsOneWidget);
       expect(backend.starts, 1);
-      expect(find.text('Hold still'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -115,7 +116,7 @@ void main() {
       await tester.tap(find.byKey(const Key('begin-validation')));
       await tester.pumpAndSettle();
       expect(backend.starts, 0);
-      expect(find.textContaining('Validation 0/15 saved'), findsOneWidget);
+      expect(find.textContaining('Validation 0/15 recorded'), findsOneWidget);
       expect(
         tester
             .widget<SegmentedButton<ProbeMode>>(
@@ -128,7 +129,7 @@ void main() {
       await tester.tap(find.byKey(const Key('start')));
       await tester.pumpAndSettle();
       expect(backend.starts, 1);
-      expect(find.textContaining('Validation 1/15 saved'), findsOneWidget);
+      expect(find.textContaining('Validation 1/15 recorded'), findsOneWidget);
       expect(
         tester.widget<FilledButton>(find.byKey(const Key('start'))).onPressed,
         isNull,
@@ -137,7 +138,7 @@ void main() {
       await tester.tap(find.byKey(const Key('next-validation')));
       await tester.pumpAndSettle();
       expect(backend.starts, 1);
-      expect(find.textContaining('Validation 1/15 saved'), findsOneWidget);
+      expect(find.textContaining('Validation 1/15 recorded'), findsOneWidget);
       expect(
         tester.widget<FilledButton>(find.byKey(const Key('start'))).onPressed,
         isNotNull,

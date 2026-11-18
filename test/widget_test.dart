@@ -154,6 +154,26 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('Configure a trial'), findsOneWidget);
   });
+
+  testWidgets('narrow width and larger text keep controls and status usable', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1;
+    tester.view.platformDispatcher.textScaleFactorTestValue = 1.5;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.platformDispatcher.clearTextScaleFactorTestValue);
+    await tester.pumpWidget(const PhonopticonApp());
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('start')), findsOneWidget);
+    expect(find.byKey(const Key('stop')), findsOneWidget);
+    expect(find.textContaining('SIMULATED'), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('start')));
+    final startBox = tester.getRect(find.byKey(const Key('start')));
+    expect(startBox.height, greaterThanOrEqualTo(48));
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('native unavailable and invalid input are explicit UI states', (
     tester,
   ) async {

@@ -117,7 +117,7 @@ For example, the held-out seed-99 stationary chirp fixture at 0.60 m yields a me
 
 The first physical milestone is one foreground iPhone capture/playback adapter that exports schema-compatible PCM with actual route/rate/processing/timestamps. Read the [native port and physical procedure](docs/PHYSICAL_TEST_PLAN.md) before hardware work. The selected local toolchain lacks the iPhoneOS SDK; no native build is claimed.
 
-See [limitations](docs/LIMITATIONS.md), [build plan](BUILD_PLAN.md), [original brief and decisions](docs/ORIGINAL_REQUEST.md), and [attribution/reuse notes](THIRD_PARTY_NOTICES.md). No upstream WAVs or Python code are redistributed.
+See [limitations](docs/LIMITATIONS.md), [mobile build and iOS port status](docs/MOBILE_BUILDS.md), [build plan](BUILD_PLAN.md), [original brief and decisions](docs/ORIGINAL_REQUEST.md), and [attribution/reuse notes](THIRD_PARTY_NOTICES.md). No upstream WAVs or Python code are redistributed.
 
 ## Calibrate tone movement and repeat physical trials
 

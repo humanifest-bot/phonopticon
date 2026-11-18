@@ -307,7 +307,7 @@ class _ExperimentScreenState extends State<ExperimentScreen>
       ),
     if (validationPlan != null) ...[
       Text(
-        'Validation ${validationTrials.length}/15 saved · ${slotRecorded ? 'review result' : 'press Start when ready'}',
+        'Validation ${validationTrials.length}/15 recorded · ${slotRecorded ? 'review result' : 'press Start when ready'}',
         key: const Key('validation-progress'),
       ),
       if (slotRecorded && validationTrials.length < 15)
@@ -342,7 +342,11 @@ class _ExperimentScreenState extends State<ExperimentScreen>
       if (mounted) {
         setState(() {
           exportStatus = message;
-          guidedExportRequested = guidedIndex != null;
+          final retrievable =
+              message.startsWith('Shared locally:') ||
+              message.startsWith('Saved locally:') ||
+              message.startsWith('Download requested:');
+          guidedExportRequested = guidedIndex != null && retrievable;
         });
       }
     } catch (e) {
@@ -501,6 +505,9 @@ class _ExperimentScreenState extends State<ExperimentScreen>
             const SizedBox(height: 12),
           ],
           SegmentedButton<ProbeMode>(
+            style: const ButtonStyle(
+              minimumSize: WidgetStatePropertyAll(Size(56, 48)),
+            ),
             segments: const [
               ButtonSegment(
                 value: ProbeMode.tone,
@@ -693,6 +700,7 @@ class _ExperimentScreenState extends State<ExperimentScreen>
               Expanded(
                 child: FilledButton.icon(
                   key: const Key('start'),
+                  style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
                   onPressed:
                       busy ||
                           slotRecorded ||
@@ -708,7 +716,10 @@ class _ExperimentScreenState extends State<ExperimentScreen>
               OutlinedButton.icon(
                 key: const Key('stop'),
                 onPressed: busy ? runner.stop : null,
-                style: OutlinedButton.styleFrom(foregroundColor: colors.error),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: colors.error,
+                  minimumSize: const Size(88, 48),
+                ),
                 icon: const Icon(Icons.stop),
                 label: const Text('Stop'),
               ),

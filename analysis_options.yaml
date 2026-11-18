@@ -4,6 +4,8 @@ analyzer:
   exclude:
     - build/**
     - web/**
+    - android/**
+    - ios/**
 linter:
   rules:
     - avoid_print

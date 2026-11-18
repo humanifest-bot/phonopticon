@@ -95,6 +95,26 @@ The final browser probe waited for the app controls, then read the full DOM/nati
 
 Regular milestone commits have been pushed throughout (2366a72, a077f17, 855f5d5, 274ee69, afe0232). Final delivery adds the format-contract/semantic-boundary fixes and this evidence. All task files are local/reviewable in Git, and no unrelated user files were changed. The loopback-only demo process is an optional local preview, not a deployment or audio service.
 
+## Mobile platform and build status (2026-11-17)
+
+Inspected the repository and local toolchain before target selection. No `android/` or `ios/` platform projects existed initially. Flutter 3.47.4 generated both projects with:
+
+```sh
+flutter create --platforms=android,ios --project-name phonopticon .
+```
+
+The generator resolved package metadata locally and updated generated platform/Dart project files. Android microphone declarations were then added to `android/app/src/main/AndroidManifest.xml`, and iOS microphone usage text was added to `ios/Runner/Info.plist`. The shared `WidgetsBindingObserver` lifecycle handler stops an active trial whenever the app leaves `resumed`; no mobile background mode is declared.
+
+Static/mobile verification:
+
+- `flutter analyze --no-pub`: exit 0, no issues.
+- `flutter test --no-pub`: exit 0, all tests passed, including 390 px phone layout.
+- `flutter build apk --debug --no-pub`: exit 1, no Android SDK located.
+- `flutter build ios --debug --simulator --no-pub`: exit 1, application not configured for iOS; full Xcode/iPhoneOS SDK remains unavailable.
+- Verbose Xcode inspection confirmed active developer directory `/Library/Developer/CommandLineTools` and failed `xcrun --sdk iphoneos --show-sdk-path`.
+
+The Android and iOS projects are source shells, not compiled native-backend evidence. No native `AudioBackend` was implemented. Mobile UI defaults to `SIMULATED` PCM and the native/unavailable menu state reports no silent fallback. Exact setup commands, iOS AVFoundation/AVAudioEngine port assumptions and hardware verification requirements are recorded in `docs/MOBILE_BUILDS.md`.
+
 ## Final source-bound build
 
 Final compiled source commit: `85afabdddcea3418ee5ef67cc9c4bd07e742c93f`, pushed to origin/main and verified with `git ls-remote origin refs/heads/main`. Working tree was clean. Using the previously recorded cached-tool prefix, executed:
@@ -172,3 +192,50 @@ With the cached SDK prefix in the README, ran `analyze --no-pub`, `test --no-pub
 Added the requested JSON array for the microphone check, stationary reflector, small slow motion and transmitter-off trials. The guided sequence locks each configuration and waits for an explicit Start, export request and Next action. Failed or silent captures can be retried. The app asks the operator to confirm downloads because browser download requests do not prove files were saved. Reloading resets guided progress.
 
 Using the cached Flutter SDK and `--no-pub`, the full test suite passed 19 tests, including a new guided workflow test. After adding the reload notice, `analyze --no-pub` reported no issues and `test --no-pub test/validation_workflow_test.dart --reporter expanded` passed two tests. These checks use mocked and simulated input, local build state and temporary files. A first test run exposed asynchronous export timing in the test; waiting for the temporary-file write resolved it. No new physical recording was made.
+
+## Usable simulated mobile milestone, 2026-11-17
+
+Changed generated mobile/platform metadata and export behavior:
+
+- Android and iOS platform projects remain explicit simulated runners; no native capture or playback was added.
+- Android export uses a MethodChannel and Android share sheet backed by a temporary JSON file. Cancellation and native errors return explicit status values. iOS export uses a MethodChannel and `UIActivityViewController` completion callback.
+- The Dart export adapter distinguishes mobile shared/saved/cancelled/error outcomes. Desktop/IO exports now explicitly label temporary files instead of presenting them as downloads.
+- The guided workflow advances only after a download/shared/saved result; a temporary file or cancellation does not claim retrievable export.
+- Android release Gradle tasks require an external `android/key.properties` and authorized keystore. No debug signing key is assigned to `release`. Debug builds do not require release credentials. Keystore, key-properties and keystore extensions are ignored.
+- iOS application and test bundle identifiers were changed from `com.example.phonopticon` to `com.humanifest.phonopticon`.
+- Phone-width controls were given 48 px minimum button heights, and a 320 px/1.5 text-scale widget test was added.
+
+Executed:
+
+```sh
+flutter analyze --no-pub
+flutter test --no-pub
+flutter build apk --debug --no-pub
+flutter build ios --debug --simulator --no-pub
+dart --disable-dart-dev tool/generate_examples.dart --out /private/tmp/phonopticon-mobile-export-verify-20261117
+dart --disable-dart-dev tool/unpack_bundle.dart /private/tmp/phonopticon-mobile-export-verify-20261117/chirp-moving.json /private/tmp/phonopticon-mobile-export-open-20261117
+```
+
+Results:
+
+- Analyzer: exit 0, no issues.
+- Flutter tests: exit 0, all tests passed, including 320 px larger-text controls and simulated/native-unavailable states.
+- Android debug build: unverified; no Android SDK was found.
+- iOS simulator build: unverified; the full Xcode/iPhoneOS SDK was unavailable and Flutter reported the application was not configured for iOS.
+- Bundle verification: generated 8 simulated bundles; unpacked `chirp-moving.json` into `analysis.json`, `emitted.wav`, `manifest.json`, `metrics.csv`, `movement.svg`, `received.wav`, `spectrum.svg`. JSON inspection confirmed schema keys `analysis`, `files`, `manifest`, schema version 1 and source kind `SIMULATED`.
+
+The mobile platform channel implementations are source changes, not runtime device evidence. Android/iOS share cancellation and file retrieval need simulator/device execution after the corresponding toolchains and signing setup are available.
+
+## Milestone 1 review, 2026-11-17
+
+Reviewed the Android/iOS export channels, Dart status handling, guided workflow, Gradle signing and generated project metadata. Confirmed defects and fixes:
+
+- Android `MainActivity` export share-sheet callback was outside the class member structure and has been moved to a valid `onActivityResult` override.
+- Android export now reports cancellation separately from native success and includes an explicit native error status.
+- iOS export completion distinguishes `UIActivity.ActivityType.saveToFiles` as `saved` and ordinary completed sharing as `shared`.
+- Android wrapper scripts and wrapper JAR are retained as source project files; a fresh checkout can use the wrapper rather than an ignored script. `local.properties` remains ignored.
+- iOS and Android application IDs are consistent at `com.humanifest.phonopticon`; iOS test bundle identifiers were also reviewed and corrected.
+- Release signing has no debug fallback. Android release tasks require complete external `android/key.properties`/keystore values and fail with an explicit configuration error otherwise.
+- Guided export no longer advances on desktop temporary-file status, mobile cancellation or mobile/native error.
+
+No SDK download, Xcode developer-directory change, signing setup, native audio implementation or physical trial was started in this milestone. The build commands remain blocked until the separately authorized SDK environments are available.
