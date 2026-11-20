@@ -1,10 +1,12 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-val releaseKeyProperties = java.util.Properties()
+val releaseKeyProperties = Properties()
 val releaseKeyPropertiesFile = rootProject.file("key.properties")
 if (releaseKeyPropertiesFile.exists()) {
     releaseKeyProperties.load(releaseKeyPropertiesFile.inputStream())

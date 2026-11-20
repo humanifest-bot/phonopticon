@@ -2,39 +2,52 @@
 
 This repository now contains generated Flutter platform projects for Android and iOS. They preserve the shared Dart UI, trial runner, configuration and export schema. Both mobile builds default to `SimulatedBackend`; no mobile physical capture is implemented.
 
-Mobile exports use a platform channel to present an Android share sheet or iOS share sheet. The result must be `shared`, `saved`, `cancelled`, or `error`; cancellation and native errors remain visible and do not advance guided export steps. Exported JSON includes the existing manifest, configuration, raw WAV data, analysis arrays and plots.
+Mobile exports use a platform channel to present Android's document-creation picker or the iOS share sheet. The result is `saved`, `shared`, `cancelled`, or `error`; cancellation and native errors remain visible and do not advance guided export steps. Exported JSON includes the existing manifest, configuration, raw WAV data, analysis arrays and plots.
 
 The app stops an active trial when `AppLifecycleState` leaves the foreground. The Flutter runner also exposes a manual Stop control with 48 px minimum button height and phone-width layout.
 
-## Local inspection (2026-11-17)
+## Local inspection
 
 Verified toolchain:
 
 - Flutter 3.47.4, stable
 - Dart 3.13.3
-- macOS 27.0.1 on arm64
-- Java 21/other JDK available at `/usr/bin/java`
+- macOS 27.2.1 on arm64
+- Temurin JDK 17.0.21.1+2 at `$HOME/Library/Java/JavaVirtualMachines/jdk-17.0.21.1+2/Contents/Home`
+- Android command-line tools 22.0
+- Android platform/build tools 36, NDK 28.2.13676358, platform-tools 37.0.1
+- Android Emulator 37.2.13 and API 36 Google APIs ARM64 image
 - CocoaPods 1.16.2
-- Android SDK: not located
-- Android emulator/device: none connected
+- Android SDK installed under `$HOME/Library/Android/sdk`
+- Android API 36 emulator available as `emulator-5554`; no physical Android device
 - Xcode/iPhone SDK: incomplete
-- iOS device/simulator: not available for a native build
+- iOS device/simulator: unavailable
 
-The active Apple developer directory is `/Library/Developer/CommandLineTools`, not a full Xcode installation. `xcodebuild -version` and `xcrun --sdk iphoneos --show-sdk-path` fail, and no iPhoneOS SDK is present. Do not install or switch SDKs as an implicit build side effect.
+The active Apple developer directory is `/Library/Developer/CommandLineTools`, not a full Xcode installation. `xcodebuild -version` and `xcrun --sdk iphoneos --show-sdk-path` fail, and no iPhoneOS SDK is present. The current account is not a sudoer, so it cannot change the system developer directory. An authorized Computer Use attempt to open the App Store timed out; no alternate UI-control path was used. Full Xcode and iOS builds remain blocked pending an administrator/user installation.
 
 ## Android setup and build
 
 Platform project: `android/`.
 
-Install Android Studio and an Android SDK outside this repository, accept the applicable licenses, then configure Flutter:
+This environment uses the Android command-line tools and a user-local Temurin JDK rather than Android Studio. Official downloads used:
+
+- [Android command-line tools for Mac ARM64](https://dl.google.com/android/repository/commandlinetools-mac_arm64-15859902_latest.zip), SHA-256 `835b62a26162b229b441d1f6d4680383815a270809eb33522c0d480fa5002c4e`
+- [Eclipse Temurin JDK 17 for Mac ARM64](https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.21.1%2B2/OpenJDK17U-jdk_aarch64_mac_hotspot_17.0.21.1_2.tar.gz), SHA-256 `2a88ccb044a8fb00957be93245da6357c11b55717511509d147cbcc5d93b2109`
+
+Install the SDK packages required by this project and Flutter:
 
 ```sh
-flutter config --android-sdk /absolute/path/to/Android/sdk
+export JAVA_HOME="$HOME/Library/Java/JavaVirtualMachines/jdk-17.0.21.1+2/Contents/Home"
+export PATH="$JAVA_HOME/bin:$PATH"
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" \
+  'platform-tools' 'platforms;android-36' 'build-tools;36.0.0' 'ndk;28.2.13676358'
+flutter config --android-sdk "$ANDROID_HOME"
+flutter config --jdk-dir="$JAVA_HOME"
 flutter doctor -v
-flutter doctor --android-licenses
 ```
 
-Install an SDK platform/Build Tools package matching the generated Flutter project, plus an emulator or connect an authorized physical device. Physical capture must not be added merely because the app can compile.
+Google Android SDK licenses were explicitly accepted for this local setup. The Emulator 37.2.13 and `system-images;android-36;google_apis;arm64-v8a` were installed for simulated workflow checks. A headless emulator was booted with `-no-audio`; no acoustic output was produced.
 
 Expected debug build and run commands:
 
@@ -47,7 +60,20 @@ flutter build apk --debug
 flutter run --debug
 ```
 
-For a signed release, generate and protect a release keystore and configure Gradle signing through approved local properties/secrets. The generated project has no release signing configuration; this repository contains no credentials.
+Verified in this environment:
+
+```sh
+flutter build apk --debug --no-pub
+flutter run -d emulator-5554 --no-pub --no-resident --no-dds
+```
+
+The APK compiled, installed and launched on the API 36 emulator. The first
+`flutter run` attempt failed to attach DDS; retrying with `--no-dds` exited 0.
+The emulator was headless, so this is not evidence that native document-picker
+save/cancel UI or on-device trial controls were manually exercised. Flutter
+widget tests cover the corresponding simulated states and phone layouts.
+
+For a signed release, generate and protect a release keystore and configure Gradle signing through approved local properties/secrets. No release signing credentials are present in this repository.
 
 Release signing is intentionally not available unless `android/key.properties` is
 created outside version control. The file must contain paths and passwords for
@@ -62,10 +88,12 @@ keyPassword=<authorized-key-password>
 
 Keep `key.properties`, `*.keystore`, and `*.jks` out of Git. The Gradle
 configuration reads this file only for the `release` build type; it never uses
-the Android debug key. A release build without a complete file is expected to
-fail signing verification rather than silently producing an improperly signed
-artifact. Debug builds use the SDK/Gradle debug configuration and do not require
-release credentials.
+the Android debug key. A release build without a complete file fails explicitly rather than silently
+using an improperly signed artifact. This was verified locally:
+`flutter build apk --release --no-pub` failed with the message that release
+signing is not configured. Debug builds use the SDK/Gradle debug configuration and do not
+require release credentials; the generated APK was verified with the Android
+debug certificate.
 
 The manifest declares `RECORD_AUDIO` and `MODIFY_AUDIO_SETTINGS`, but the shared app currently selects `SimulatedBackend` and makes no native audio calls. These declarations do not grant permission or establish capture capability. Runtime microphone permission and route handling belong in a future native `AudioBackend` implementation.
 
@@ -143,9 +171,9 @@ The initial Android target should compile with an emulator/simulator and run onl
 
 | Platform | Project available | SDK/build tools | Build/run result |
 | --- | --- | --- | --- |
-| Android | Yes | SDK absent | Project generated; build/run unverified |
-| iOS | Yes | Full Xcode/iPhoneOS SDK absent | Project generated; simulator/device build unverified |
+| Android | Yes | API 36, JDK 17, NDK 28.2; emulator 37.2.13 | Debug APK compiled; app installed/launched on API 36 emulator; native picker workflow not UI-verified |
+| iOS | Yes | Full Xcode/iPhoneOS SDK absent; account cannot switch developer directory | Project generated; simulator/device build unverified |
 | macOS | No platform directory | Xcode incomplete | Existing desktop mode remains web/macOS verification pending |
 | Web | Yes | Chrome/Flutter available | Separate browser/AudioWorklet evidence; not a mobile native build |
 
-Physical phone capture remains unavailable on both generated mobile projects.
+Physical phone capture remains unavailable on both generated mobile projects. The Android emulator is simulated UI execution only; no physical Android/iPhone operation or acoustic capability is established.

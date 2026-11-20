@@ -198,7 +198,7 @@ Using the cached Flutter SDK and `--no-pub`, the full test suite passed 19 tests
 Changed generated mobile/platform metadata and export behavior:
 
 - Android and iOS platform projects remain explicit simulated runners; no native capture or playback was added.
-- Android export uses a MethodChannel and Android share sheet backed by a temporary JSON file. Cancellation and native errors return explicit status values. iOS export uses a MethodChannel and `UIActivityViewController` completion callback.
+- Mobile export uses a MethodChannel: Android's document-creation picker writes to the user-selected URI, and iOS uses `UIActivityViewController`. Cancellation and native errors return explicit status values.
 - The Dart export adapter distinguishes mobile shared/saved/cancelled/error outcomes. Desktop/IO exports now explicitly label temporary files instead of presenting them as downloads.
 - The guided workflow advances only after a download/shared/saved result; a temporary file or cancellation does not claim retrievable export.
 - Android release Gradle tasks require an external `android/key.properties` and authorized keystore. No debug signing key is assigned to `release`. Debug builds do not require release credentials. Keystore, key-properties and keystore extensions are ignored.
@@ -239,3 +239,35 @@ Reviewed the Android/iOS export channels, Dart status handling, guided workflow,
 - Guided export no longer advances on desktop temporary-file status, mobile cancellation or mobile/native error.
 
 No SDK download, Xcode developer-directory change, signing setup, native audio implementation or physical trial was started in this milestone. The build commands remain blocked until the separately authorized SDK environments are available.
+
+## Android toolchain and simulated build, current session
+
+The user authorized local toolchain installation/build setup. Disk and existing SDK paths were inspected first. There was no Android SDK or Java runtime, and the active Apple developer directory was `/Library/Developer/CommandLineTools`. The account is not in sudoers; an attempt to use the exact Homebrew-reported writable directories was rejected before changing their ownership. No system permissions were changed.
+
+Installed user-local, checksum-verified prerequisites:
+
+- Temurin JDK 17.0.21.1+2 ARM64 under `~/Library/Java/JavaVirtualMachines`
+- Android command-line tools 22.0 under `~/Library/Android/sdk/cmdline-tools/latest`
+- Android platform 36, Build Tools 36.0.0, NDK 28.2.13676358, Platform Tools 37.0.1
+- Android Emulator 37.2.13 and Google APIs ARM64 system image for API 36
+
+Source URLs and SHA-256 values are in `docs/MOBILE_BUILDS.md`. SDK license acceptance was explicitly authorized. Flutter user configuration now points to the local Android SDK and JDK. `flutter doctor -v` recognizes Android SDK 36 and the emulator; Xcode remains incomplete.
+
+Initial Android builds exposed two confirmed issues:
+
+1. Gradle Kotlin DSL did not resolve `java.util.Properties`; fixed with an explicit `java.util.Properties` import.
+2. Android rejected the FileProvider element outside `<application>`. The export design was simplified to Android `ACTION_CREATE_DOCUMENT`, which writes the JSON directly to a user-selected URI and reports saved/cancelled/error after the actual operation.
+
+Verification:
+
+- `flutter analyze --no-pub`: exit 0, no issues.
+- `flutter test --no-pub`: exit 0, all 20 tests passed, with 71 numerical assertions.
+- `flutter build apk --debug --no-pub`: exit 0; APK at `build/app/outputs/flutter-apk/app-debug.apk`.
+- Android tooling printed an SDK XML version warning (tools understand through v3; one installed SDK metadata file is v4); the build completed successfully.
+- `aapt dump badging`: application ID `com.humanifest.phonopticon`, target/compile SDK 36, RECORD_AUDIO and MODIFY_AUDIO_SETTINGS declarations present.
+- `apksigner verify --print-certs`: APK is signed with the Android debug certificate.
+- `flutter build apk --release --no-pub`: expected exit 1 with `Release signing is not configured. Create android/key.properties with an authorized keystore outside source control.` No signing credentials were created or used.
+- Created and booted `phonopticon-api36` (`emulator-5554`), with emulator audio disabled. `flutter run -d emulator-5554 --no-pub --no-resident --no-dds`: exit 0, app installed/launched. The first launch attempt hit a local DDS connection failure; retrying with `--no-dds` succeeded. The emulator was headless and logged a zero-width initial render; its picker and controls were not manually operated.
+- `flutter build ios --debug --simulator --no-pub`: exit 1, `Application not configured for iOS`. Xcode and the iPhoneOS SDK are absent. `sudo` is unavailable because the account is not an administrator. The Computer Use server timed out twice during app inventory, so no alternate App Store UI path was attempted.
+
+This completes Android compilation and a headless launch only. Android picker success/cancel/failure, visible controls and export retrieval remain unverified on an interactive target. iOS remains unbuilt; no physical phone, signing identity, native audio or acoustic test was used.

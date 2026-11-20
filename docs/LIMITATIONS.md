@@ -1,6 +1,6 @@
 # Current limitations
 
-This MVP demonstrates a simulated experiment workflow and numerical PCM analysis. It now includes an experimental Web Audio computer microphone/speaker adapter. There is still no native iPhone/Android build validation, accepted physical trial result or physically calibrated movement threshold.
+This MVP demonstrates a simulated experiment workflow and numerical PCM analysis. It includes an experimental Web Audio computer microphone/speaker adapter and an Android debug build that launched on a headless API 36 emulator. There is no iOS simulator build, manually exercised mobile export picker, accepted physical trial result or physically calibrated movement threshold.
 
 ## Signal model
 
@@ -24,7 +24,7 @@ Unknown/invalid results must stay distinct from valid low scores. Transmitter-of
 
 The local Flutter web build and cached flutter_tester execution are separate from browser interaction and native builds. The first in-app browser probe reached the page, but screenshot capture failed and mouse input timed out at Input.dispatchMouseEvent. Keyboard activation did not establish a verified completed trial. Do not describe this as browser QA passing or diagnose a model incompatibility from it. Always-on app semantics and isolated panel semantics now expose the actual controls independently in the native accessibility tree. The tool could read/focus Start but did not establish a completed browser trial. Widget-render PNGs are labelled as widget evidence.
 
-Flutter generated Android and iOS platform projects on 2026-11-17, but Android SDK and full Xcode/iPhoneOS toolchains are unavailable. Those projects compile only their simulated/mobile UI when a compatible toolchain is provided; they do not implement native capture or playback. Phone speaker/microphone response, latency and near-ultrasonic behavior are not inferred from the Mac or browser backend.
+Flutter generated Android and iOS platform projects. A user-local Android SDK/JDK was subsequently installed and the Android app compiled and launched on an API 36 emulator. The Android emulator test was headless, so its native document picker and visual control flow have not been manually verified. Full Xcode/iPhoneOS remains unavailable; no iOS simulator/device build has been compiled. Neither platform implements native capture or playback. Phone speaker/microphone response, latency and near-ultrasonic behavior are not inferred from the Mac or browser backend.
 
 Web export uses dart:html and targets the JavaScript build, not Flutter WebAssembly. A future WebAssembly port needs JS interop replacement. The current web app is local-only, uses bundled engine/font assets and blocks external connections through its page policy. Do not host a development server on a public interface by default.
 

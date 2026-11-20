@@ -4,15 +4,12 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import android.content.Intent
-import android.net.Uri
-import androidx.core.content.FileProvider
-import java.io.File
-import java.io.FileOutputStream
 
 class MainActivity : FlutterActivity() {
     private val channelName = "com.humanifest.phonopticon/export"
     private val shareRequestCode = 42017
     private var pendingExportResult: MethodChannel.Result? = null
+    private var pendingExportJson: String? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -23,29 +20,26 @@ class MainActivity : FlutterActivity() {
                     val filename = call.argument<String>("filename")
                     if (json == null || filename == null) {
                         result.error("invalid_arguments", "JSON and filename are required", null)
+                    } else if (pendingExportResult != null) {
+                        result.success(
+                            mapOf("status" to "error", "detail" to "An export is already open"),
+                        )
                     } else {
                         try {
-                            val dir = File(cacheDir, "phonopticon-export")
-                            dir.mkdirs()
-                            val file = File(dir, filename)
-                            FileOutputStream(file).use { it.write(json.toByteArray(Charsets.UTF_8)) }
-                            val uri: Uri = FileProvider.getUriForFile(
-                                this,
-                                "$packageName.fileprovider",
-                                file,
-                            )
-                            val share = Intent(Intent.ACTION_SEND).apply {
+                            val createDocument = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                                addCategory(Intent.CATEGORY_OPENABLE)
                                 type = "application/json"
-                                putExtra(Intent.EXTRA_STREAM, uri)
                                 putExtra(Intent.EXTRA_TITLE, filename)
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             }
                             pendingExportResult = result
+                            pendingExportJson = json
                             startActivityForResult(
-                                Intent.createChooser(share, "Save or share trial bundle"),
+                                createDocument,
                                 shareRequestCode,
                             )
-                        } catch (error: Throwable) {
+                        } catch (error: Exception) {
+                            pendingExportResult = null
+                            pendingExportJson = null
                             result.success(mapOf("status" to "error", "detail" to error.message))
                         }
                     }
@@ -57,9 +51,26 @@ class MainActivity : FlutterActivity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         if (requestCode == shareRequestCode) {
-            val status = if (resultCode == RESULT_OK) "shared" else "cancelled"
-            pendingExportResult?.success(mapOf("status" to status, "detail" to ""))
+            val result = pendingExportResult
             pendingExportResult = null
+            val json = pendingExportJson
+            pendingExportJson = null
+            if (resultCode != RESULT_OK) {
+                result?.success(mapOf("status" to "cancelled"))
+                return
+            }
+            try {
+                val uri = data?.data
+                    ?: throw IllegalStateException("Document picker returned no destination")
+                val content = json ?: throw IllegalStateException("Export data unavailable")
+                contentResolver.openOutputStream(uri, "wt").use { stream ->
+                    val output = stream ?: throw IllegalStateException("Cannot open selected document")
+                    output.write(content.toByteArray(Charsets.UTF_8))
+                }
+                result?.success(mapOf("status" to "saved"))
+            } catch (error: Exception) {
+                result?.success(mapOf("status" to "error", "detail" to error.message))
+            }
             return
         }
         super.onActivityResult(requestCode, resultCode, data)

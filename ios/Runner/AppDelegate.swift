@@ -12,7 +12,10 @@ import UIKit
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
-    guard let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "PhonopticonExport") else { return }
+    guard let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "PhonopticonExport") else {
+      NSLog("Unable to register Phonopticon export channel")
+      return
+    }
     let channel = FlutterMethodChannel(
       name: "com.humanifest.phonopticon/export",
       binaryMessenger: registrar.messenger()
@@ -23,7 +26,7 @@ import UIKit
             let json = arguments["json"] as? String,
             let filename = arguments["filename"] as? String
       else {
-        result(FlutterMethodNotImplemented)
+        result(["status": "error", "detail": "Invalid export request"])
         return
       }
       do {
@@ -34,7 +37,7 @@ import UIKit
           withIntermediateDirectories: true
         )
         let file = directory.appendingPathComponent(filename)
-        try json.data(using: .utf8)?.write(to: file)
+        try Data(json.utf8).write(to: file, options: .atomic)
         guard let presenter = self?.window?.rootViewController
           ?? UIApplication.shared.connectedScenes
             .compactMap({ ($0 as? UIWindowScene)?.windows.first?.rootViewController })
@@ -47,6 +50,15 @@ import UIKit
           activityItems: [file],
           applicationActivities: nil
         )
+        if let popover = activity.popoverPresentationController {
+          popover.sourceView = presenter.view
+          popover.sourceRect = CGRect(
+            x: presenter.view.bounds.midX,
+            y: presenter.view.bounds.midY,
+            width: 0,
+            height: 0
+          )
+        }
         activity.completionWithItemsHandler = { activityType, completed, _, activityError in
           if let activityError {
             result(["status": "error", "detail": activityError.localizedDescription])
