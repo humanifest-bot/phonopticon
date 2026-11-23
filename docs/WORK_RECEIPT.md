@@ -271,3 +271,18 @@ Verification:
 - `flutter build ios --debug --simulator --no-pub`: exit 1, `Application not configured for iOS`. Xcode and the iPhoneOS SDK are absent. `sudo` is unavailable because the account is not an administrator. The Computer Use server timed out twice during app inventory, so no alternate App Store UI path was attempted.
 
 This completes Android compilation and a headless launch only. Android picker success/cancel/failure, visible controls and export retrieval remain unverified on an interactive target. iOS remains unbuilt; no physical phone, signing identity, native audio or acoustic test was used.
+
+## Android interactive follow-up, 2026-11-23
+
+The previously running API 36 emulator was stopped. A clean restart from the
+user-local Android SDK completed with emulator PID 82867 and booted
+`emulator-5554`. ADB reported the device as `device` and the
+`com.humanifest.phonopticon` package remained installed. The emulator was
+run headlessly with `-no-audio` and `-no-window`; it did not provide an
+interactive window for native document-picker or result-state verification.
+
+No additional source changes were made in this follow-up. The emulator was
+stopped by exact PID 82867 after the final connection check. Android export
+success/cancellation/error and bundle retrieval remain unverified until an
+interactive emulator or physical Android target is available. iOS simulator
+and device builds remain blocked by the absent full Xcode/iPhoneOS toolchain.
