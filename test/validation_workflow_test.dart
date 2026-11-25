@@ -6,6 +6,7 @@ import 'package:phonopticon/audio/audio_backend.dart';
 import 'package:phonopticon/calibration/tone_calibration.dart';
 import 'package:phonopticon/domain/experiment.dart';
 import 'package:phonopticon/main.dart';
+import 'package:phonopticon/session/session_store.dart';
 import 'package:phonopticon/signal/synthesis.dart';
 
 class MockPhysicalBackend implements AudioBackend {
@@ -41,16 +42,28 @@ class MockPhysicalBackend implements AudioBackend {
   Future<void> dispose() async {}
 }
 
+class _MemorySessionStore implements SessionStore {
+  String? snapshot;
+  @override
+  Future<String?> loadLatest() async => snapshot;
+  @override
+  Future<void> save(String sessionId, String value) async => snapshot = value;
+}
+
 void main() {
   testWidgets(
-    'guided calibration requires manual capture and export before advancing',
+    'guided calibration requires manual capture and local save before advancing',
     (tester) async {
       tester.view.physicalSize = const Size(1400, 2400);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
       final backend = MockPhysicalBackend();
-      await tester.pumpWidget(PhonopticonApp(backend: backend));
+      final store = _MemorySessionStore();
+      await tester.pumpWidget(
+        PhonopticonApp(backend: backend, sessionStore: store),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('begin-guided')));
       await tester.pumpAndSettle();
       expect(find.text('Trial 1 of 4 · mic-check'), findsOneWidget);
@@ -61,21 +74,13 @@ void main() {
       await tester.tap(start);
       await tester.pumpAndSettle();
       expect(backend.starts, 1);
-      expect(find.byKey(const Key('next-guided')), findsNothing);
-      final export = find.byKey(const Key('export'));
-      await tester.ensureVisible(export);
-      await tester.runAsync(() async {
-        await tester.tap(export);
-        await Future<void>.delayed(const Duration(milliseconds: 300));
-      });
+      expect(store.snapshot, isNotNull);
+      final next = find.byKey(const Key('next-guided'));
+      expect(next, findsOneWidget);
+      await tester.ensureVisible(next);
+      await tester.tap(next);
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('next-guided')), findsNothing);
-      expect(find.textContaining('Temporary file written'), findsOneWidget);
-      expect(
-        find.textContaining('Confirm the trial bundle downloaded'),
-        findsNothing,
-      );
-      expect(find.text('Trial 1 of 4 · mic-check'), findsOneWidget);
+      expect(find.text('Trial 2 of 4 · stationary'), findsOneWidget);
       expect(backend.starts, 1);
       expect(tester.takeException(), isNull);
     },

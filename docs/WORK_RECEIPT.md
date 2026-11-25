@@ -324,3 +324,69 @@ completed. ADB reported no currently attached target for interactive picker
 verification. These results do not establish that save, cancellation,
 retrieval, lifecycle interruption or iOS share behavior has been manually
 exercised.
+
+## Guided-session and microphone-meter follow-up (2026-11-25)
+
+Scope: local Flutter/browser workflow, shared breathing comparison and mobile
+export/session plumbing. Existing recordings and unrelated editor files were
+left in place. The meter starts only by explicit action and is bounded; guided
+captures require a separate manual Start. Each attempt, including failures and
+cancellations, is saved with its raw bundle where available. A local session
+save failure blocks progression and offers retry. Notes are operator-reported.
+Browser storage is per origin and subject to quota/clearing; mobile session
+storage and the native pickers have not been exercised on a device. The latest
+mobile pointer and snapshot are replaced separately: if the pointer write fails,
+the save reports failure even though a complete snapshot may have been replaced.
+
+With the cached Flutter invocation documented in README and `umask 077`:
+
+```sh
+flutter_cached analyze --no-pub
+flutter_cached test --no-pub --reporter compact
+flutter_cached build web --no-pub --no-web-resources-cdn --no-wasm-dry-run
+node tool/test_microphone_meter.cjs
+node tool/test_computer_audio.cjs
+```
+
+The analyzer found no issues, the full suite passed 41 tests including 71
+synthetic numerical assertions, and the web build succeeded with the known
+unused Cupertino font-family warning. The JavaScript checks passed with mock
+audio and permission flows. Tests spawn Flutter test processes and write local
+build/tool metadata and disposable temporary fixture renders; the build uses
+cached resources. The focused session tests use temporary directories and an
+in-memory store. No live microphone, speaker, picker, or network was used.
+
+The Android source compiled successfully with the existing cached JDK, Android
+SDK and Gradle, without package resolution or a device:
+
+```sh
+cd android
+JAVA_HOME=/Users/legion/Library/Java/JavaVirtualMachines/jdk-17.0.21.1+2/Contents/Home \
+ANDROID_HOME=/Users/legion/Library/Android/sdk CI=true \
+/Users/legion/.gradle/wrapper/dists/gradle-9.3.1-all/9ot9r568e8zfvvd4mn8rbu1j0/gradle-9.3.1/bin/gradle \
+  --offline --no-daemon :app:compileDebugKotlin
+```
+
+This compiled Kotlin and Flutter debug assets; it is not an APK installation
+or a device test. Gradle reported its existing deprecated-option and SDK XML
+warnings. `xcode-select -p` returned `/Library/Developer/CommandLineTools`;
+the full iOS toolchain and iOS build remain unavailable here.
+
+The earlier physical captures were replayed independently using the shared CLI:
+
+```sh
+/opt/homebrew/Caskroom/flutter/3.47.4/flutter/bin/cache/dart-sdk/bin/dart \
+  --disable-dart-dev tool/verify_breathing.dart \
+  /Users/legion/Downloads/phonopticon-1794928910715000.json \
+  /Users/legion/Downloads/phonopticon-1794929004716000.json \
+  /Users/legion/Downloads/phonopticon-1794929199840000.json \
+  --out /private/tmp/phonopticon-comparison-GArMhm/report-replay.json
+```
+
+It exited 0: stationary control quiet and transmitter-off rejected, while
+moving cadence and the combined criteria were not met; the motion RMS
+threshold was 0.002077077367857602. This replay does not establish breathing
+detection or reliability. A local in-app browser probe reached the Phonopticon
+tab title, but its accessibility tree exposed no app controls, so the new UI,
+IndexedDB persistence and physical microphone behavior were not verified in a
+live browser session.

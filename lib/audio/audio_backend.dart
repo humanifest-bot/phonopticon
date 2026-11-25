@@ -21,6 +21,13 @@ abstract interface class AudioBackend {
   Future<void> dispose();
 }
 
+/// Optional foreground microphone level check. No samples are retained.
+abstract interface class MicrophoneMeterBackend {
+  /// Completes when stopped, interrupted, or the bounded check expires.
+  Future<void> startMeter({required void Function(double level) onLevel});
+  Future<void> stopMeter();
+}
+
 class UnsupportedNativeBackend implements AudioBackend {
   @override
   AudioCapabilities get capabilities => const AudioCapabilities(

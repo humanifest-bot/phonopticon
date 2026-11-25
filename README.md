@@ -30,7 +30,7 @@ If reinstalling this project's profile is explicitly intended, run `python3 -B t
 
 ## Run locally
 
-Verified environment: macOS under legion, Flutter 3.47.4, Dart 3.13.3, existing SDK/package artifacts. The web runner has completed computer microphone/speaker captures. Native iOS/Android platform projects and accepted physical detection/ranging performance remain pending. No installation, download, signing, account setup or SDK repair is included.
+Development environment: macOS under legion, Flutter 3.47.4, Dart 3.13.3, existing SDK/package artifacts. The web runner has completed computer microphone/speaker captures. Android and iOS projects exist; native audio and accepted physical detection/ranging performance remain pending. No installation, download, signing, account setup or SDK repair is included.
 
 The following function uses the cached Flutter tool directly, avoiding the shell launcher's automatic SDK bootstrap/upgrade path. It suppresses telemetry and update checks. Use a compatible pre-existing SDK; change `sonar_flutter_sdk` only to your authorized SDK location.
 
@@ -77,7 +77,7 @@ Browser automation is distinct from widget execution. See [verification receipt]
 5. Compare spectra/scores and export each local PHYSICAL bundle. The fixture threshold is uncalibrated; a high score can be ambient noise or processing. Chirp estimates require reliable alignment and calibration, so unavailable ranging is a valid outcome.
 6. Stop ends output/capture and releases the microphone. Backgrounding, interruption, denied permission and timeout stop the trial without automatic retry. Do not change system privacy permissions merely to force a pass.
 
-The Web Audio worklet clocks emitted/captured PCM together and caps output at the exact sample count (maximum ten seconds). It requests processing off and exports reported input settings, context sample rate, input label, browser, reported latency and timestamps. Requests do not prove the hardware path is unprocessed; resampling/routing can intervene. There is no microphone-to-speaker monitoring/feedback, upload, new dependency, or audio on page load. Browser support and real acoustic performance still need direct hardware checks.
+The Web Audio worklet clocks emitted/captured PCM together and caps output at the exact sample count (ten seconds for tone and ranging, 30 seconds for Breathing). It requests processing off and exports reported input settings, context sample rate, input label, browser, reported latency and timestamps. Requests do not prove the hardware path is unprocessed; resampling/routing can intervene. There is no microphone-to-speaker monitoring/feedback, upload, new dependency, or audio on page load. Browser support and real acoustic performance still need direct hardware checks.
 
 ## Reproduce offline examples
 
@@ -127,6 +127,8 @@ Use the local [calibration CLI and frozen evaluation procedure](docs/TONE_CALIBR
 
 ## FMCW breathing mode
 
-For the four-trial sequence, choose **Computer mic + speaker**, then **Begin guided calibration**. Each step sets its own mode and condition. Press Start and export each bundle, then confirm the download and select Next trial. Failed or silent captures can be retried. Progress resets on page reload, so keep the exported files.
+For the four-trial sequence, choose **Computer mic + speaker**, then **Begin guided calibration**. An optional **Start microphone check** displays input levels without emitting a probe or retaining samples; stop the check before a trial. Each guided step sets its own mode and condition. Press Start for each trial; failed or cancelled attempts are retained and may be retried. Attempts and saved operator notes are stored locally, and **Resume saved session** restores the latest saved session after a reload. Export the complete session for a portable copy. Browser storage can be cleared or unavailable and is not a backup; session exports contain raw microphone audio. See the [guided trial instructions](docs/TRIAL_WORKFLOW.md).
+
+After the matched stationary, motion, and transmitter-off steps, the app recomputes the same fixed calibration criteria as the CLI. A pass is not a breathing or medical validation; movement timing and displacement remain operator-reported. Native mobile session storage/export is implemented but has not been validated on devices, and native audio remains unavailable.
 
 Select **Breathing** for a 30-second echo trace and a candidate slow-motion rhythm. For Mac calibration, use the same echo window and audio route across stationary, small-motion and transmitter-off trials. The app has a silent four-second pacer. Export each local trial bundle and recompute the comparison with `tool/verify_breathing.dart`. See the [calibration procedure and acceptance criteria](docs/WORK_RECEIPT.md#fmcw-breathing-mode-2026-11-05).

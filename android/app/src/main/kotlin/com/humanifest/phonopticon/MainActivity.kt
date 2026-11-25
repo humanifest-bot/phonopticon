@@ -4,6 +4,7 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import android.content.Intent
+import java.io.File
 
 class MainActivity : FlutterActivity() {
     private val channelName = "com.humanifest.phonopticon/export"
@@ -28,7 +29,17 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
             .setMethodCallHandler { call, result ->
-                if (call.method == "shareBundle") {
+                if (call.method == "sessionDirectory") {
+                    try {
+                        val directory = File(noBackupFilesDir, "phonopticon/sessions")
+                        if (!directory.isDirectory && !directory.mkdirs()) {
+                            throw IllegalStateException("Cannot create session directory")
+                        }
+                        result.success(directory.absolutePath)
+                    } catch (error: Exception) {
+                        result.error("session_directory", error.message, null)
+                    }
+                } else if (call.method == "shareBundle") {
                     val json = call.argument<String>("json")
                     val filename = call.argument<String>("filename")
                     if (json == null || filename == null) {

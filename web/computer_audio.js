@@ -1,11 +1,79 @@
 // Local-only audio bridge. No capture/emission until an explicit start call.
 (() => {
   let active = null;
+  let meterLevel = 0;
   const supported = () => !!(window.isSecureContext && navigator.mediaDevices?.getUserMedia && window.AudioContext && window.AudioWorkletNode);
   if (document.documentElement) document.documentElement.dataset.computerAudioSupport = JSON.stringify({
     secureContext:window.isSecureContext, microphoneApi:!!navigator.mediaDevices?.getUserMedia,
     audioContext:!!window.AudioContext,audioWorklet:!!window.AudioWorkletNode});
   const stop = () => { if (active) active.cancel(); };
+  async function startMeter() {
+    if (!supported()) throw Error('Microphone meter unavailable in this browser.');
+    if (active) throw Error('A microphone check or trial is already active.');
+    const context = new AudioContext({latencyHint:'interactive'});
+    let stream, source, node, timer, permissionTimer;
+    let settled = false, resolve, reject;
+    meterLevel = 0;
+    const done = new Promise((yes,no) => { resolve=yes; reject=no; });
+    const state = {
+      isMeter: true,
+      cancel() { state.finish(); },
+      finish(error=null) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        clearTimeout(permissionTimer);
+        document.removeEventListener('visibilitychange', hidden);
+        if (node) node.disconnect();
+        if (source) source.disconnect();
+        if (stream) stream.getTracks().forEach(t => t.stop());
+        meterLevel = 0;
+        const closed = context.close().catch(() => {});
+        if (active === state) active = null;
+        closed.then(() => error ? reject(error) : resolve());
+      },
+    };
+    function hidden() { if (document.hidden) state.cancel(); }
+    active = state;
+    document.addEventListener('visibilitychange', hidden);
+    permissionTimer = setTimeout(() => state.finish(Error('Microphone check timed out.')), 15000);
+    const resumed = context.resume();
+    resumed.catch(() => {});
+    (async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({audio:{
+          channelCount:1,echoCancellation:false,noiseSuppression:false,autoGainControl:false
+        },video:false});
+        if (settled) { stream.getTracks().forEach(t => t.stop()); return; }
+        await resumed;
+        if (settled) return;
+        if (context.state !== 'running') throw Error('Microphone audio context unavailable.');
+        await context.audioWorklet.addModule('microphone_meter_worklet.js?v=1');
+        if (settled) return;
+        source = context.createMediaStreamSource(stream);
+        node = new AudioWorkletNode(context, 'microphone-meter', {
+          numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[1],channelCount:1,channelCountMode:'explicit'
+        });
+        node.onprocessorerror = () => state.finish(Error('Microphone meter stopped unexpectedly.'));
+        node.port.onmessage = e => {
+          if (settled) return;
+          if (e.data.error) state.finish(Error(e.data.error));
+          else if (Number.isFinite(e.data.level)) meterLevel = Math.max(0, Math.min(1, e.data.level));
+        };
+        for (const track of stream.getTracks()) track.onended = () => state.finish(Error('Microphone disconnected.'));
+        clearTimeout(permissionTimer);
+        source.connect(node);
+        node.connect(context.destination);
+        state.ready = true;
+        timer = setTimeout(() => state.finish(), 30000);
+      } catch (error) { state.finish(error); }
+    })();
+    context.onstatechange = () => {
+      if (node && !settled && context.state !== 'running') state.finish(Error('Microphone check interrupted.'));
+    };
+    return done;
+  }
+  const stopMeter = () => { if (active?.isMeter) active.cancel(); };
   async function start(configJson, tx) {
     const c = JSON.parse(configJson);
     if (!supported()) throw Error('Computer audio unavailable: secure context, microphone API and AudioWorklet required.');
@@ -93,5 +161,7 @@
     };
     return result;
   }
-  window.phonopticonAudio = {get available(){return supported();}, start, stop, get elapsed(){return active?.elapsed || 0;}};
+  window.phonopticonAudio = {get available(){return supported();}, start, stop, startMeter, stopMeter,
+    get meterLevel(){return meterLevel;}, get meterReady(){return !!(active?.isMeter && active.ready);},
+    get elapsed(){return active?.elapsed || 0;}};
 })();

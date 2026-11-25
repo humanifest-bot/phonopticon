@@ -4,10 +4,10 @@ import 'package:phonopticon/export/export_io.dart';
 void main() {
   const trialId = 'trial-123';
 
-  test('saved export is reported as a local save', () {
+  test('saved export reports the user-selected destination', () {
     expect(
       mobileExportMessage({'status': 'saved'}, trialId),
-      'Saved locally: $trialId.json',
+      'Saved to selected destination: $trialId.json',
     );
   });
 

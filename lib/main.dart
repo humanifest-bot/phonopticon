@@ -7,11 +7,14 @@ import 'audio/computer_backend.dart';
 import 'audio/simulated_backend.dart';
 import 'calibration/tone_calibration.dart';
 import 'calibration/import_profile.dart';
+import 'calibration/read_bundle.dart';
+import 'calibration/breathing_comparison.dart';
 import 'domain/experiment.dart';
 import 'export/artifacts.dart';
 import 'export/export_bundle.dart';
 import 'runner/trial_runner.dart';
-import 'signal/analysis.dart' show silentMicrophoneInput;
+import 'session/session_store.dart';
+import 'signal/analysis.dart' show analyze, silentMicrophoneInput;
 import 'ui/plots.dart';
 import 'ui/trial_guide.dart';
 
@@ -25,9 +28,15 @@ void main() {
 }
 
 class PhonopticonApp extends StatelessWidget {
-  const PhonopticonApp({super.key, this.backend, this.initialCalibration});
+  const PhonopticonApp({
+    super.key,
+    this.backend,
+    this.initialCalibration,
+    this.sessionStore,
+  });
   final AudioBackend? backend;
   final ToneCalibration? initialCalibration;
+  final SessionStore? sessionStore;
   @override
   Widget build(BuildContext context) => MaterialApp(
     title: 'Phonopticon',
@@ -41,14 +50,21 @@ class PhonopticonApp extends StatelessWidget {
     home: ExperimentScreen(
       backend: backend,
       initialCalibration: initialCalibration,
+      sessionStore: sessionStore,
     ),
   );
 }
 
 class ExperimentScreen extends StatefulWidget {
-  const ExperimentScreen({super.key, this.backend, this.initialCalibration});
+  const ExperimentScreen({
+    super.key,
+    this.backend,
+    this.initialCalibration,
+    this.sessionStore,
+  });
   final AudioBackend? backend;
   final ToneCalibration? initialCalibration;
+  final SessionStore? sessionStore;
   @override
   State<ExperimentScreen> createState() => _ExperimentScreenState();
 }
@@ -69,6 +85,24 @@ class _ExperimentScreenState extends State<ExperimentScreen>
           .toList();
   int? guidedIndex;
   bool guidedExportRequested = false;
+  late final SessionStore sessionStore;
+  Map<String, dynamic>? guidedSession;
+  Map<String, dynamic>? resumableSession;
+  bool sessionSaving = false;
+  bool sessionLoaded = false, sessionSaveFailed = false, notesDirty = false;
+  String? sessionStatus;
+  final notesControllers = <String, TextEditingController>{
+    'systemVolume': TextEditingController(),
+    'distance': TextEditingController(),
+    'reflector': TextEditingController(),
+    'deviceStability': TextEditingController(),
+    'unexpectedSounds': TextEditingController(),
+  };
+  Map<String, Object?>? comparison;
+  String? comparisonStatus;
+  bool meterActive = false;
+  double meterLevel = 0;
+  String? meterStatus;
   late TrialRunner runner;
   ProbeMode mode = ProbeMode.tone;
   Scenario scenario = Scenario.moving;
@@ -85,7 +119,243 @@ class _ExperimentScreenState extends State<ExperimentScreen>
   double get runDuration =>
       breathing ? ExperimentConfig.breathingSeconds : duration;
   bool get settingsLocked =>
-      runner.busy || validationPlan != null || guidedIndex != null;
+      runner.busy ||
+      validationPlan != null ||
+      guidedIndex != null ||
+      sessionSaving ||
+      meterActive;
+
+  Future<void> loadSavedSession() async {
+    try {
+      final value = await sessionStore.loadLatest();
+      if (!mounted || value == null) return;
+      final decoded = jsonDecode(value);
+      if (decoded is! Map ||
+          decoded['schemaVersion'] != 1 ||
+          decoded['id'] is! String ||
+          decoded['attempts'] is! List ||
+          decoded['index'] is! int ||
+          (decoded['index'] as int) < 0 ||
+          (decoded['index'] as int) >= guidedTrials.length) {
+        throw const FormatException('Unsupported or invalid saved session');
+      }
+      setState(() {
+        resumableSession = Map<String, dynamic>.from(decoded);
+        sessionStatus = 'A local session is available to resume.';
+      });
+    } catch (error) {
+      if (mounted)
+        setState(() => sessionStatus = 'Session restore unavailable: $error');
+    } finally {
+      if (mounted) setState(() => sessionLoaded = true);
+    }
+  }
+
+  Future<bool> saveGuidedSession() async {
+    final session = guidedSession;
+    if (session == null || sessionSaving) return false;
+    setState(() {
+      sessionSaving = true;
+      sessionStatus = 'Saving session locally…';
+      session['notes'] = {
+        for (final entry in notesControllers.entries)
+          entry.key: entry.value.text,
+      };
+    });
+    try {
+      await sessionStore.save(session['id'] as String, jsonEncode(session));
+      if (mounted)
+        setState(() {
+          sessionStatus = 'Session saved locally.';
+          resumableSession = session;
+          sessionSaveFailed = false;
+          notesDirty = false;
+        });
+      return true;
+    } catch (error) {
+      if (mounted)
+        setState(() {
+          sessionSaveFailed = true;
+          sessionStatus =
+              'Session save failed: $error. Retry saving before continuing.';
+        });
+      return false;
+    } finally {
+      if (mounted) setState(() => sessionSaving = false);
+    }
+  }
+
+  Future<void> beginGuidedSession() async {
+    for (final controller in notesControllers.values) {
+      controller.clear();
+    }
+    guidedSession = {
+      'schemaVersion': 1,
+      'id': 'session-${DateTime.now().toUtc().microsecondsSinceEpoch}',
+      'createdUtc': DateTime.now().toUtc().toIso8601String(),
+      'index': 0,
+      'complete': false,
+      'attempts': <Map<String, dynamic>>[],
+    };
+    setState(() {
+      comparison = null;
+      comparisonStatus = null;
+      notesDirty = false;
+      sessionSaveFailed = false;
+    });
+    applyGuidedStep(0);
+    await saveGuidedSession();
+  }
+
+  void resumeGuidedSession() {
+    final saved = resumableSession;
+    if (saved == null) return;
+    guidedSession = saved;
+    final notes = saved['notes'];
+    for (final entry in notesControllers.entries) {
+      entry.value.text = notes is Map
+          ? (notes[entry.key] as String? ?? '')
+          : '';
+    }
+    comparison = null;
+    comparisonStatus = null;
+    applyGuidedStep(saved['index'] as int);
+    final attempts = (saved['attempts'] as List)
+        .whereType<Map>()
+        .where((a) => a['step'] == guidedIndex)
+        .toList();
+    if (attempts.isNotEmpty) {
+      final last = attempts.last;
+      try {
+        final bundle = last['bundle'];
+        if (bundle is Map) {
+          runner.capture = readPhysicalBundle(
+            Map<String, dynamic>.from(bundle),
+            mode: mode,
+          );
+          if (!runner.capture!.cancelled)
+            runner.result = analyze(runner.capture!);
+        }
+        runner.state = TrialState.values.byName(last['state'] as String);
+        runner.error = last['error'] as String?;
+        guidedExportRequested = last['exported'] == true;
+      } catch (error) {
+        sessionStatus = 'Saved attempt could not be restored: $error';
+      }
+    }
+    setState(() {
+      resumableSession = null;
+      notesDirty = false;
+    });
+    if (saved['complete'] == true) compareGuided();
+  }
+
+  void compareGuided() {
+    final session = guidedSession;
+    if (session == null) return;
+    try {
+      final attempts = (session['attempts'] as List).whereType<Map>().toList();
+      final captures = <AudioCapture>[];
+      final ids = <String?>[];
+      final revisions = <String?>[];
+      for (var step = 1; step <= 3; step++) {
+        final matched = attempts
+            .where(
+              (a) =>
+                  a['step'] == step &&
+                  a['bundle'] is Map &&
+                  a['state'] != 'cancelled',
+            )
+            .toList();
+        if (matched.isEmpty)
+          throw StateError(
+            'Complete a stationary, motion and transmitter-off trial first.',
+          );
+        final bundle = Map<String, dynamic>.from(matched.last['bundle'] as Map);
+        captures.add(readPhysicalBundle(bundle, mode: ProbeMode.breathing));
+        ids.add((bundle['manifest'] as Map)['trialId'] as String?);
+        revisions.add((bundle['manifest'] as Map)['sourceRevision'] as String?);
+      }
+      final result = compareBreathingCaptures(
+        captures,
+        trialIds: ids,
+        sourceRevisions: revisions,
+      );
+      setState(() {
+        comparison = result;
+        comparisonStatus = null;
+        session['comparison'] = result;
+      });
+    } catch (error) {
+      setState(() {
+        comparison = null;
+        comparisonStatus = 'Comparison unavailable: $error';
+        session.remove('comparison');
+      });
+    }
+  }
+
+  Future<void> exportGuidedSession() async {
+    if (guidedSession == null) return;
+    if (notesDirty && !await saveGuidedSession()) return;
+    if (!mounted) return;
+    setState(() {
+      exporting = true;
+      exportStatus = null;
+    });
+    try {
+      final id = guidedSession!['id'] as String;
+      final message = await saveBundle(
+        jsonEncode(guidedSession),
+        'phonopticon-$id',
+      );
+      if (mounted) setState(() => exportStatus = message);
+    } catch (error) {
+      if (mounted)
+        setState(() => exportStatus = 'Session export failed: $error');
+    } finally {
+      if (mounted) setState(() => exporting = false);
+    }
+  }
+
+  Future<void> startMeter() async {
+    final backend = runner.backend;
+    if (backend is! MicrophoneMeterBackend || meterActive || runner.busy)
+      return;
+    setState(() {
+      meterActive = true;
+      meterLevel = 0;
+      meterStatus = 'Starting microphone…';
+    });
+    try {
+      await (backend as MicrophoneMeterBackend).startMeter(
+        onLevel: (level) {
+          if (mounted && meterActive)
+            setState(() {
+              meterLevel = level.clamp(0, 1);
+              meterStatus =
+                  'Microphone level · no sound emitted or samples saved';
+            });
+        },
+      );
+      if (mounted) setState(() => meterStatus = 'Microphone check stopped.');
+    } catch (error) {
+      if (mounted)
+        setState(() => meterStatus = 'Microphone check failed: $error');
+    } finally {
+      if (mounted)
+        setState(() {
+          meterActive = false;
+        });
+    }
+  }
+
+  void stopMeter() {
+    final backend = runner.backend;
+    if (backend is MicrophoneMeterBackend && meterActive) {
+      (backend as MicrophoneMeterBackend).stopMeter();
+    }
+  }
 
   void applyGuidedStep(int index) {
     final step = guidedTrials[index];
@@ -99,6 +369,7 @@ class _ExperimentScreenState extends State<ExperimentScreen>
       range = (step['breathingGateMeters'] as num?)?.toDouble() ?? .6;
       nearUltrasonic = step['nearUltrasonic'] as bool;
       clearResults();
+      guidedSession?['index'] = index;
     });
   }
 
@@ -107,8 +378,10 @@ class _ExperimentScreenState extends State<ExperimentScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     native = widget.backend?.capabilities.sourceKind == 'PHYSICAL';
+    sessionStore = widget.sessionStore ?? createSessionStore();
     calibration = widget.initialCalibration;
     _makeRunner();
+    loadSavedSession();
   }
 
   void _makeRunner() {
@@ -124,12 +397,19 @@ class _ExperimentScreenState extends State<ExperimentScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     runner.dispose();
+    stopMeter();
+    for (final controller in notesControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed && runner.busy) runner.stop();
+    if (state != AppLifecycleState.resumed) {
+      if (runner.busy) runner.stop();
+      stopMeter();
+    }
   }
 
   void clearResults() {
@@ -184,7 +464,27 @@ class _ExperimentScreenState extends State<ExperimentScreen>
         });
         slotRecorded = true;
       }
+      if (guidedIndex != null && guidedSession != null) {
+        guidedSession!['complete'] = false;
+        final id =
+            'phonopticon-${DateTime.now().toUtc().microsecondsSinceEpoch}';
+        (guidedSession!['attempts'] as List).add({
+          'step': guidedIndex,
+          'id': guidedTrials[guidedIndex!]['id'],
+          'state': runner.state.name,
+          'error': runner.error,
+          'exported': false,
+          'bundle': capture == null
+              ? null
+              : artifactBundle(capture, runner.result, trialId: id),
+        });
+        guidedExportRequested = false;
+        comparison = null;
+        comparisonStatus = null;
+        guidedSession!.remove('comparison');
+      }
     });
+    if (guidedIndex != null) await saveGuidedSession();
   }
 
   Future<void> loadCalibration() async {
@@ -344,10 +644,18 @@ class _ExperimentScreenState extends State<ExperimentScreen>
           exportStatus = message;
           final retrievable =
               message.startsWith('Shared via selected destination:') ||
+              message.startsWith('Saved to selected destination:') ||
               message.startsWith('Saved locally:') ||
               message.startsWith('Download requested:');
           guidedExportRequested = guidedIndex != null && retrievable;
         });
+      }
+      if (guidedIndex != null && guidedExportRequested) {
+        final attempts = guidedSession?['attempts'] as List?;
+        if (attempts != null && attempts.isNotEmpty) {
+          (attempts.last as Map)['exported'] = true;
+          await saveGuidedSession();
+        }
       }
     } catch (e) {
       if (mounted) setState(() => exportStatus = 'Export failed: $e');
@@ -373,6 +681,8 @@ class _ExperimentScreenState extends State<ExperimentScreen>
       ],
     ),
   );
+  String comparisonValue(Object? value) =>
+      value is num ? value.toStringAsPrecision(3) : 'unavailable';
   Widget slider(
     String label,
     double value,
@@ -408,7 +718,8 @@ class _ExperimentScreenState extends State<ExperimentScreen>
         r.quality.length == 1 &&
         r.quality.single == 'No coherent chirp probe found';
     final guidedCanAdvance =
-        guidedExportRequested &&
+        !sessionSaving &&
+        !sessionSaveFailed &&
         runner.capture != null &&
         !runner.capture!.cancelled &&
         (r?.valid == true || offControlRecorded);
@@ -472,12 +783,26 @@ class _ExperimentScreenState extends State<ExperimentScreen>
             OutlinedButton.icon(
               key: const Key('begin-guided'),
               onPressed:
-                  !busy && native && runner.backend.capabilities.available
-                  ? () => applyGuidedStep(0)
+                  sessionLoaded &&
+                      !busy &&
+                      !meterActive &&
+                      native &&
+                      runner.backend.capabilities.available
+                  ? beginGuidedSession
                   : null,
               icon: const Icon(Icons.playlist_play),
               label: const Text('Begin guided calibration'),
             ),
+          if (guidedStep == null && resumableSession != null)
+            OutlinedButton.icon(
+              key: const Key('resume-guided'),
+              onPressed: !busy && !meterActive && native
+                  ? resumeGuidedSession
+                  : null,
+              icon: const Icon(Icons.restore),
+              label: const Text('Resume saved session'),
+            ),
+          if (sessionStatus != null) Text(sessionStatus!),
           if (guidedStep == null && !native)
             const Text(
               'Select Computer mic + speaker to begin guided calibration.',
@@ -490,11 +815,65 @@ class _ExperimentScreenState extends State<ExperimentScreen>
             ),
             Text(guidedStep['instruction'] as String),
             const Text(
-              'Export each trial before continuing. Progress resets if this page reloads.',
+              'Attempts are saved locally after each trial. Export the complete session for a portable copy.',
+            ),
+            if (sessionSaveFailed)
+              OutlinedButton(
+                key: const Key('retry-save'),
+                onPressed: sessionSaving ? null : saveGuidedSession,
+                child: const Text('Retry saving session'),
+              ),
+            ExpansionTile(
+              title: const Text('Session notes'),
+              subtitle: Text(
+                notesDirty
+                    ? 'Unsaved notes'
+                    : 'Operator-reported setup and observations',
+              ),
+              children: [
+                for (final entry in const {
+                  'systemVolume': 'System volume',
+                  'distance': 'Reflector distance',
+                  'reflector': 'Reflector type',
+                  'deviceStability': 'Device stability',
+                  'unexpectedSounds': 'Unexpected sounds',
+                }.entries)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: TextField(
+                      key: Key('note-${entry.key}'),
+                      controller: notesControllers[entry.key],
+                      enabled: !sessionSaving,
+                      onChanged: (_) => setState(() => notesDirty = true),
+                      decoration: InputDecoration(
+                        labelText: entry.value,
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                TextButton(
+                  key: const Key('save-notes'),
+                  onPressed: sessionSaving ? null : saveGuidedSession,
+                  child: const Text('Save notes locally'),
+                ),
+              ],
+            ),
+            OutlinedButton.icon(
+              key: const Key('export-guided-session'),
+              onPressed: exporting || sessionSaving
+                  ? null
+                  : exportGuidedSession,
+              icon: const Icon(Icons.file_download_outlined),
+              label: const Text('Export complete session'),
             ),
             TextButton(
               key: const Key('end-guided'),
-              onPressed: busy || exporting
+              onPressed:
+                  busy ||
+                      exporting ||
+                      sessionSaving ||
+                      sessionSaveFailed ||
+                      notesDirty
                   ? null
                   : () => setState(() {
                       guidedIndex = null;
@@ -685,6 +1064,36 @@ class _ExperimentScreenState extends State<ExperimentScreen>
             ),
           if (native && mode == ProbeMode.tone && guidedStep == null)
             ...calibrationControls(),
+          if (runner.backend is MicrophoneMeterBackend) ...[
+            const SizedBox(height: 12),
+            const Text(
+              'Microphone check: speak to see input level. No probe sound is played.',
+            ),
+            LinearProgressIndicator(
+              key: const Key('meter-level'),
+              value: meterLevel,
+              semanticsLabel: 'Microphone input level',
+            ),
+            Wrap(
+              children: [
+                TextButton.icon(
+                  key: const Key('start-meter'),
+                  onPressed: busy || meterActive || sessionSaving
+                      ? null
+                      : startMeter,
+                  icon: const Icon(Icons.mic),
+                  label: const Text('Start microphone check'),
+                ),
+                TextButton.icon(
+                  key: const Key('stop-meter'),
+                  onPressed: meterActive ? stopMeter : null,
+                  icon: const Icon(Icons.stop),
+                  label: const Text('Stop check'),
+                ),
+              ],
+            ),
+            if (meterStatus != null) Text(meterStatus!),
+          ],
           const SizedBox(height: 12),
           TrialGuide(
             mode: mode,
@@ -703,8 +1112,10 @@ class _ExperimentScreenState extends State<ExperimentScreen>
                   style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
                   onPressed:
                       busy ||
+                          meterActive ||
+                          sessionSaving ||
+                          sessionSaveFailed ||
                           slotRecorded ||
-                          (guidedStep != null && guidedCanAdvance) ||
                           !runner.backend.capabilities.available
                       ? null
                       : start,
@@ -768,7 +1179,10 @@ class _ExperimentScreenState extends State<ExperimentScreen>
                 'Check the Mac’s Sound input meter. Then try Tone movement → Transmitter off for 4 seconds while speaking.',
               ),
             ),
-          if (guidedStep != null && guidedExportRequested && !guidedCanAdvance)
+          if (guidedStep != null &&
+              runner.capture != null &&
+              !guidedCanAdvance &&
+              !sessionSaving)
             const Text(
               'This capture needs attention. Retry the trial before continuing.',
             ),
@@ -777,18 +1191,18 @@ class _ExperimentScreenState extends State<ExperimentScreen>
             Text(
               guidedIndex == 0
                   ? 'Confirm the microphone check captured your voice before continuing.'
-                  : 'Confirm the trial bundle downloaded before continuing.',
+                  : 'The attempt was saved locally. You can retry it or continue.',
             ),
             FilledButton.icon(
               key: const Key('next-guided'),
-              onPressed: () {
+              onPressed: () async {
                 if (guidedIndex! + 1 == guidedTrials.length) {
-                  setState(() {
-                    guidedIndex = null;
-                    guidedExportRequested = false;
-                  });
+                  guidedSession!['complete'] = true;
+                  compareGuided();
+                  await saveGuidedSession();
                 } else {
                   applyGuidedStep(guidedIndex! + 1);
+                  await saveGuidedSession();
                 }
               },
               icon: const Icon(Icons.arrow_forward),
@@ -797,6 +1211,27 @@ class _ExperimentScreenState extends State<ExperimentScreen>
                     ? 'Finish guided sequence'
                     : 'Next trial',
               ),
+            ),
+          ],
+          if (comparisonStatus != null) Text(comparisonStatus!),
+          if (comparison != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Calibration criteria ${comparison!['calibrationCriteriaMet'] == true ? 'met' : 'not met'}',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            Text(
+              'Stationary control quiet: ${comparison!['stationaryControlQuiet']} · Transmitter-off rejected: ${comparison!['offProbeRejected']} · Motion cadence recovered: ${comparison!['movingCadenceRecovered']}',
+            ),
+            Text(
+              'Fixed periodic fraction ≥ ${((comparison!['minimumPeriodicFraction'] as num) * 100).toStringAsFixed(0)}%; motion RMS threshold ${comparison!['periodicRmsThreshold']}.',
+            ),
+            for (final row in comparison!['trials'] as List)
+              Text(
+                '${(row as Map)['condition']}: peak ${comparisonValue((row['analysis'] as Map)['peakHz'])} Hz · periodic fraction ${comparisonValue((row['analysis'] as Map)['periodicFraction'])} · periodic RMS ${comparisonValue((row['analysis'] as Map)['periodicRms'])}',
+              ),
+            const Text(
+              'Operator-paced movement; timing and displacement are not independently measured. This is not a breathing or medical validation.',
             ),
           ],
         ],

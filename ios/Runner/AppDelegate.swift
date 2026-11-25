@@ -21,6 +21,25 @@ import UIKit
       binaryMessenger: registrar.messenger()
     )
     channel.setMethodCallHandler { [weak self] call, result in
+      if call.method == "sessionDirectory" {
+        do {
+          let support = try FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+          )
+          var directory = support.appendingPathComponent("phonopticon/sessions", isDirectory: true)
+          try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+          var values = URLResourceValues()
+          values.isExcludedFromBackup = true
+          try directory.setResourceValues(values)
+          result(directory.path)
+        } catch {
+          result(FlutterError(code: "session_directory", message: error.localizedDescription, details: nil))
+        }
+        return
+      }
       guard call.method == "shareBundle",
             let arguments = call.arguments as? [String: Any],
             let json = arguments["json"] as? String,
@@ -59,15 +78,11 @@ import UIKit
             height: 0
           )
         }
-        activity.completionWithItemsHandler = { activityType, completed, _, activityError in
+        activity.completionWithItemsHandler = { _, completed, _, activityError in
           if let activityError {
             result(["status": "error", "detail": activityError.localizedDescription])
           } else if completed {
-            if activityType == .saveToFiles {
-              result(["status": "saved", "detail": file.path])
-            } else {
-              result(["status": "shared", "detail": file.path])
-            }
+            result(["status": "shared"])
           } else {
             result(["status": "cancelled", "detail": filename])
           }

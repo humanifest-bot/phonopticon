@@ -14,6 +14,14 @@ external JSPromise<JSString> _start(JSString config, JSFloat32Array waveform);
 external void _stop();
 @JS('phonopticonAudio.elapsed')
 external double get _elapsed;
+@JS('phonopticonAudio.startMeter')
+external JSPromise<JSAny?> _startMeter();
+@JS('phonopticonAudio.stopMeter')
+external void _stopMeter();
+@JS('phonopticonAudio.meterLevel')
+external double get _meterLevel;
+@JS('phonopticonAudio.meterReady')
+external bool get _meterReady;
 
 bool computerBackendAvailable() {
   try {
@@ -25,7 +33,7 @@ bool computerBackendAvailable() {
 
 AudioBackend createComputerBackend() => ComputerBackend();
 
-class ComputerBackend implements AudioBackend {
+class ComputerBackend implements AudioBackend, MicrophoneMeterBackend {
   bool _disposed = false;
   @override
   AudioCapabilities get capabilities => AudioCapabilities(
@@ -75,8 +83,27 @@ class ComputerBackend implements AudioBackend {
   @override
   Future<void> stop() async => _stop();
   @override
+  Future<void> startMeter({
+    required void Function(double level) onLevel,
+  }) async {
+    if (_disposed) throw StateError('Backend disposed');
+    final completion = _startMeter().toDart;
+    final watch = Timer.periodic(const Duration(milliseconds: 100), (_) {
+      if (_meterReady) onLevel(_meterLevel);
+    });
+    try {
+      await completion;
+    } finally {
+      watch.cancel();
+    }
+  }
+
+  @override
+  Future<void> stopMeter() async => _stopMeter();
+  @override
   Future<void> dispose() async {
     _disposed = true;
     _stop();
+    _stopMeter();
   }
 }

@@ -8,7 +8,7 @@ String mobileExportMessage(Map<Object?, Object?>? result, String trialId) {
   final detail = result?['detail']?.toString();
   if (status == 'shared')
     return 'Shared via selected destination: $trialId.json';
-  if (status == 'saved') return 'Saved locally: $trialId.json';
+  if (status == 'saved') return 'Saved to selected destination: $trialId.json';
   if (status == 'cancelled') return 'Share cancelled: $trialId.json';
   if (status == 'error') {
     throw StateError(
