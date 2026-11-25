@@ -2,7 +2,9 @@
 
 This repository now contains generated Flutter platform projects for Android and iOS. They preserve the shared Dart UI, trial runner, configuration and export schema. Both mobile builds default to `SimulatedBackend`; no mobile physical capture is implemented.
 
-Mobile exports use a platform channel to present Android's document-creation picker or the iOS share sheet. The result is `saved`, `shared`, `cancelled`, or `error`; cancellation and native errors remain visible and do not advance guided export steps. Exported JSON includes the existing manifest, configuration, raw WAV data, analysis arrays and plots.
+Mobile exports use a platform channel to present Android's document-creation picker or the iOS share sheet. Android writes only to the document explicitly selected by the user. On iOS, **Save to Files** saves locally; other completed share-sheet activities may send the bundle to a destination selected by the user. No transfer or upload occurs automatically. Status text distinguishes saved files from sharing to a selected destination. Cancellation and native errors remain visible and do not advance guided export steps. Exported JSON includes the existing manifest, configuration, raw WAV data, analysis arrays and plots.
+
+The Android Gradle wrapper JAR is checked into `android/gradle/wrapper/` alongside the wrapper scripts and properties. Flutter's generated Android `.gitignore` ignores this JAR by default, so this repository explicitly keeps it tracked; `local.properties` remains machine-specific and ignored. Fresh checkouts still need Flutter, a JDK, and the Android SDK configured as described below.
 
 The app stops an active trial when `AppLifecycleState` leaves the foreground. The Flutter runner also exposes a manual Stop control with 48 px minimum button height and phone-width layout.
 
@@ -69,9 +71,9 @@ flutter run -d emulator-5554 --no-pub --no-resident --no-dds
 
 The APK compiled, installed and launched on the API 36 emulator. The first
 `flutter run` attempt failed to attach DDS; retrying with `--no-dds` exited 0.
-The emulator was headless, so this is not evidence that native document-picker
-save/cancel UI or on-device trial controls were manually exercised. Flutter
-widget tests cover the corresponding simulated states and phone layouts.
+The emulator was headless, so native document-picker save/cancel and bundle
+retrieval still require interactive verification. Flutter widget tests cover
+the corresponding simulated states and phone layouts.
 
 For a signed release, generate and protect a release keystore and configure Gradle signing through approved local properties/secrets. No release signing credentials are present in this repository.
 

@@ -343,7 +343,7 @@ class _ExperimentScreenState extends State<ExperimentScreen>
         setState(() {
           exportStatus = message;
           final retrievable =
-              message.startsWith('Shared locally:') ||
+              message.startsWith('Shared via selected destination:') ||
               message.startsWith('Saved locally:') ||
               message.startsWith('Download requested:');
           guidedExportRequested = guidedIndex != null && retrievable;
@@ -914,7 +914,7 @@ class _ExperimentScreenState extends State<ExperimentScreen>
                 : export,
             icon: const Icon(Icons.download),
             label: Text(
-              exporting ? 'Preparing export…' : 'Export local trial bundle',
+              exporting ? 'Preparing export…' : 'Save or share trial bundle',
             ),
           ),
           if (exportStatus != null)

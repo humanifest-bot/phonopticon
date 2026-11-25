@@ -11,6 +11,19 @@ class MainActivity : FlutterActivity() {
     private var pendingExportResult: MethodChannel.Result? = null
     private var pendingExportJson: String? = null
 
+    override fun onDestroy() {
+        val result = pendingExportResult
+        pendingExportResult = null
+        pendingExportJson = null
+        result?.success(
+            mapOf(
+                "status" to "error",
+                "detail" to "Export interrupted because the app activity was recreated. Please retry.",
+            ),
+        )
+        super.onDestroy()
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)

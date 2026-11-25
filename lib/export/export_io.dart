@@ -3,6 +3,21 @@ import 'package:flutter/services.dart';
 
 const _exportChannel = MethodChannel('com.humanifest.phonopticon/export');
 
+String mobileExportMessage(Map<Object?, Object?>? result, String trialId) {
+  final status = result?['status']?.toString();
+  final detail = result?['detail']?.toString();
+  if (status == 'shared')
+    return 'Shared via selected destination: $trialId.json';
+  if (status == 'saved') return 'Saved locally: $trialId.json';
+  if (status == 'cancelled') return 'Share cancelled: $trialId.json';
+  if (status == 'error') {
+    throw StateError(
+      detail?.isNotEmpty == true ? detail! : 'Mobile export failed',
+    );
+  }
+  throw StateError('Mobile export returned no result');
+}
+
 Future<String> saveBundle(String json, String trialId) async {
   if (Platform.isAndroid || Platform.isIOS) {
     try {
@@ -10,17 +25,7 @@ Future<String> saveBundle(String json, String trialId) async {
         'shareBundle',
         {'json': json, 'filename': '$trialId.json'},
       );
-      final status = result?['status']?.toString();
-      final detail = result?['detail']?.toString();
-      if (status == 'shared') return 'Shared locally: $trialId.json';
-      if (status == 'saved') return 'Saved locally: $trialId.json';
-      if (status == 'cancelled') return 'Share cancelled: $trialId.json';
-      if (status == 'error') {
-        throw StateError(
-          detail?.isNotEmpty == true ? detail! : 'Mobile export failed',
-        );
-      }
-      throw StateError('Mobile export returned no result');
+      return mobileExportMessage(result, trialId);
     } on PlatformException catch (error) {
       throw StateError(error.message ?? error.code);
     }

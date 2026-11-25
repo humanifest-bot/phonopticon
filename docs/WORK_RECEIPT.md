@@ -168,7 +168,7 @@ The operator redirected physical testing from leaning to small, slow reflector m
 
 The analysis matches repeated chirps to locate the direct probe modulo a sweep. It compares the early and late alignment, coherently averages sweeps in about 100 ms groups, and tracks complex echo coefficients across a fixed window of ±9 cm around the selected equivalent range. After direct-probe phase correction and detrending, it measures periodic variation at 0.10–0.60 Hz. This implementation is inspired by [ApneaApp's distance-gated periodic echo tracking](https://apnea.cs.washington.edu/apneaapp.pdf#page=4). Its algorithm and 3–10 kHz test band differ from the paper. Echo ratios do not measure chest displacement in millimeters.
 
-After each attempt, use **Export local trial bundle**. Verify the set with the existing cached Dart SDK and a new output path:
+After each attempt, use **Save or share trial bundle**. Verify the set with the existing cached Dart SDK and a new output path:
 
 ```sh
 umask 077
@@ -233,7 +233,7 @@ Reviewed the Android/iOS export channels, Dart status handling, guided workflow,
 - Android `MainActivity` export share-sheet callback was outside the class member structure and has been moved to a valid `onActivityResult` override.
 - Android export now reports cancellation separately from native success and includes an explicit native error status.
 - iOS export completion distinguishes `UIActivity.ActivityType.saveToFiles` as `saved` and ordinary completed sharing as `shared`.
-- Android wrapper scripts and wrapper JAR are retained as source project files; a fresh checkout can use the wrapper rather than an ignored script. `local.properties` remains ignored.
+- Correction (2026-11-24): the wrapper scripts and properties were tracked, but `gradle-wrapper.jar` was ignored and untracked. Flutter 3.47.4's generated Android project includes the JAR while also ignoring it; wrapper scripts cannot run without it. The source-project claim that a fresh checkout had a usable wrapper was inaccurate. This is corrected in the Android export follow-up by tracking the generated wrapper JAR and removing that ignore rule. `local.properties` remains machine-specific and ignored.
 - iOS and Android application IDs are consistent at `com.humanifest.phonopticon`; iOS test bundle identifiers were also reviewed and corrected.
 - Release signing has no debug fallback. Android release tasks require complete external `android/key.properties`/keystore values and fail with an explicit configuration error otherwise.
 - Guided export no longer advances on desktop temporary-file status, mobile cancellation or mobile/native error.
@@ -286,3 +286,41 @@ stopped by exact PID 82867 after the final connection check. Android export
 success/cancellation/error and bundle retrieval remain unverified until an
 interactive emulator or physical Android target is available. iOS simulator
 and device builds remain blocked by the absent full Xcode/iPhoneOS toolchain.
+
+## Android export review follow-up, 2026-11-24
+
+Flutter 3.47.4 `flutter create --project-name=phonopticon_wrapper_probe
+--platforms=android /tmp/phonopticon_wrapper_probe` generated
+`android/gradle/wrapper/gradle-wrapper.jar`, its properties file, and the wrapper
+scripts. Its generated Android `.gitignore` also ignored the JAR. The generated
+JAR is now tracked in this project, and the ignore rule was removed. Its SHA-256
+is `16caeaf66d57a0d1d2087fef6a97efa62de8da69afa5b908f40db35afc4342da`.
+
+The iOS share sheet permits destinations chosen by the user, including
+non-local destinations. Status text now says “Shared via selected destination”
+rather than claiming the share was local. The contract permits an explicitly
+user-initiated share; no transfer or upload occurs automatically. The export
+control is labeled “Save or share trial bundle.”
+
+Android activity destruction during a pending document picker now completes the
+channel request with an explicit interruption error instead of silently losing
+the callback. The native source compiles in the debug APK. The Dart export
+status tests verify that interruption errors surface, but an Android activity
+recreation during the actual picker has not yet been reproduced on a target.
+
+Executed:
+
+```sh
+flutter analyze --no-pub
+flutter test --no-pub
+flutter build apk --debug --no-pub
+```
+
+Results on the final source: analyzer exited 0 with no issues; all 25 tests
+passed, including 5 mobile export-status tests and the 71 existing numerical
+assertions; the Android debug APK built successfully using the tracked Gradle
+wrapper. Gradle emitted the known SDK XML v4 compatibility warning but
+completed. ADB reported no currently attached target for interactive picker
+verification. These results do not establish that save, cancellation,
+retrieval, lifecycle interruption or iOS share behavior has been manually
+exercised.
