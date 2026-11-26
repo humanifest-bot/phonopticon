@@ -390,3 +390,58 @@ detection or reliability. A local in-app browser probe reached the Phonopticon
 tab title, but its accessibility tree exposed no app controls, so the new UI,
 IndexedDB persistence and physical microphone behavior were not verified in a
 live browser session.
+
+## Recovery and calibration diagnostics follow-up (2026-11-25)
+
+Scope: session listing and recovery, stable trial IDs, explicit attempt and
+retry selection, recording-quality diagnostics, trace comparison, and a
+held-out [calibration protocol](REPEATABLE_CALIBRATION.md). A selected trial's
+original bundle is reused for its individual export. Saved attempts include
+operator notes at completion; malformed saved attempts are reported instead
+of being rewritten. The fixed breathing-comparison criteria were not changed.
+High-RMS windows and probe-band measurements are descriptive heuristics, not a
+diagnosis of their cause or physical sound pressure. Trace time axes are
+relative to each recording, not synchronized across trials.
+
+After inspecting the test entry points, with `umask 077` and the cached Flutter
+invocation in README, these commands ran without package resolution:
+
+```sh
+flutter_cached analyze --no-pub
+flutter_cached test --no-pub --reporter expanded
+flutter_cached build web --no-pub --no-web-resources-cdn --no-wasm-dry-run
+```
+
+The analyzer reported no issues; the full suite passed 56 tests, including the
+71 synthetic numerical assertions; the web build succeeded with the existing
+unused Cupertino font-family warning. Tests used in-memory fixtures, synthetic
+PCM and disposable local files, spawning Flutter test processes and writing
+project build/tool metadata and SDK lock metadata. The new targeted tests
+cover opening an older session, session-opening races, rejecting malformed
+snapshots without rewriting them, preventing incomplete completion, preserving
+exported trial IDs and selecting the intended retry. Additional recovery tests
+cover a structurally valid bundle with damaged WAV data and a legacy completed
+session missing its required microphone check. Diagnostic fixtures check
+silence, clipping, in-band energy, transient timing, weak nonzero RMS and
+unreliable alignment. They do not validate real-world sensitivity.
+
+A separate, visibly marked test fixture was built to a fresh temporary path:
+
+```sh
+flutter_cached build web --no-pub --no-web-resources-cdn --no-wasm-dry-run \
+  --target=test/browser_workflow_fixture.dart \
+  --output=/private/tmp/phonopticon-browser-fixture-7fgLC50I
+python3 -B -m http.server 0 --bind 127.0.0.1 \
+  --directory /private/tmp/phonopticon-browser-fixture-7fgLC50I
+```
+
+The temporary server selected loopback port 59865. In the in-app browser at
+that separate origin, the fake meter displayed and stopped, a synthetic note
+was saved and restored after reload, and an older session was reopened after
+creating a second. The fixture backend could not open a real microphone or
+speaker. The temporary server was stopped; its test-only browser storage and
+build directory were not deleted. This browser check exercised IndexedDB and
+the fixture UI, not physical audio, quota exhaustion, multi-tab conflicts, or
+native mobile storage. The subsequent source-review safeguards were verified
+with widget tests, not rerun in the browser fixture. No new physical trials
+were recorded, and mobile capture and iOS hardware remain unverified.

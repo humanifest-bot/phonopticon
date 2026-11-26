@@ -12,6 +12,7 @@ Map<String, Object?> compareBreathingCaptures(
   List<AudioCapture> captures, {
   List<String?>? trialIds,
   List<String?>? sourceRevisions,
+  void Function(List<AnalysisResult> results)? onAnalyzed,
 }) {
   const conditions = [
     Scenario.stationary,
@@ -94,6 +95,7 @@ Map<String, Object?> compareBreathingCaptures(
       off.quality.length == 1 &&
       off.quality.single == 'No coherent chirp probe found';
   final movingRecovered = cadence(move) && rms(move) >= threshold;
+  onAnalyzed?.call(List.unmodifiable(results));
   return {
     'stage': 'physical calibration',
     'algorithm': breathingVersion,

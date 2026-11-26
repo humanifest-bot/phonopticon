@@ -3,7 +3,7 @@ import 'session_store.dart';
 
 SessionStore createSessionStore() => _BrowserSessionStore();
 
-class _BrowserSessionStore implements SessionStore {
+class _BrowserSessionStore implements SessionStore, SessionArchive {
   Future<dynamic> _open() {
     final factory = html.window.indexedDB;
     if (factory == null) {
@@ -42,7 +42,54 @@ class _BrowserSessionStore implements SessionStore {
   }
 
   @override
+  Future<List<String>> listSessionIds() async {
+    final db = await _open();
+    try {
+      final transaction = db.transaction('sessions', 'readonly');
+      final store = transaction.objectStore('sessions');
+      final ids = <String>[];
+      await for (final dynamic cursor
+          in store.openCursor(autoAdvance: true) as Stream) {
+        final dynamic key = cursor.key;
+        if (key is! String || !key.startsWith('session:')) continue;
+        final id = key.substring('session:'.length);
+        if (isValidSessionId(id)) ids.add(id);
+      }
+      ids.sort();
+      return ids;
+    } finally {
+      db.close();
+    }
+  }
+
+  @override
+  Future<String?> loadById(String sessionId) async {
+    validateSessionId(sessionId);
+    final db = await _open();
+    try {
+      final transaction = db.transaction('sessions', 'readonly');
+      final store = transaction.objectStore('sessions');
+      final key = 'session:$sessionId';
+      // Queue both requests before awaiting so the transaction stays active.
+      // A stored null is corrupt, whereas a missing key is an absent session.
+      final results = await Future.wait<dynamic>([
+        store.getObject(key) as Future<dynamic>,
+        store.count(key) as Future<dynamic>,
+      ]);
+      final dynamic value = results[0];
+      if (results[1] == 0) return null;
+      if (value is! String) {
+        throw const FormatException('Invalid session snapshot.');
+      }
+      return value;
+    } finally {
+      db.close();
+    }
+  }
+
+  @override
   Future<void> save(String sessionId, String snapshot) async {
+    validateSessionId(sessionId);
     final db = await _open();
     try {
       final transaction = db.transaction('sessions', 'readwrite');

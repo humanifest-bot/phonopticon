@@ -5,12 +5,11 @@ import 'session_store.dart';
 SessionStore createSessionStore() => MobileSessionStore();
 
 /// Mobile storage. The resolver may be supplied by a host-side test.
-class MobileSessionStore implements SessionStore {
+class MobileSessionStore implements SessionStore, SessionArchive {
   MobileSessionStore({Future<Directory> Function()? directoryResolver})
     : _directoryResolver = directoryResolver ?? _platformDirectory;
 
   static const _channel = MethodChannel('com.humanifest.phonopticon/export');
-  static final _identifier = RegExp(r'^[a-zA-Z0-9_-]+$');
   final Future<Directory> Function() _directoryResolver;
 
   static Future<Directory> _platformDirectory() async {
@@ -40,7 +39,7 @@ class MobileSessionStore implements SessionStore {
         throw const FormatException('Invalid latest session pointer.');
       }
       final name = await pointer.readAsString();
-      if (!_identifier.hasMatch(name)) {
+      if (!isValidSessionId(name)) {
         throw const FormatException('Invalid latest session pointer.');
       }
       final snapshot = File('${directory.path}/$name.json');
@@ -68,10 +67,37 @@ class MobileSessionStore implements SessionStore {
   }
 
   @override
-  Future<void> save(String sessionId, String snapshot) async {
-    if (!_identifier.hasMatch(sessionId)) {
-      throw ArgumentError('Invalid session identifier.');
+  Future<List<String>> listSessionIds() async {
+    final directory = await _directoryResolver();
+    if (!await directory.exists()) return [];
+    final ids = <String>[];
+    await for (final entry in directory.list(followLinks: false)) {
+      if (entry is! File) continue;
+      final name = entry.uri.pathSegments.last;
+      if (!name.endsWith('.json')) continue;
+      final id = name.substring(0, name.length - '.json'.length);
+      if (isValidSessionId(id)) ids.add(id);
     }
+    ids.sort();
+    return ids;
+  }
+
+  @override
+  Future<String?> loadById(String sessionId) async {
+    validateSessionId(sessionId);
+    final directory = await _directoryResolver();
+    final file = File('${directory.path}/$sessionId.json');
+    final type = await FileSystemEntity.type(file.path, followLinks: false);
+    if (type == FileSystemEntityType.notFound) return null;
+    if (type != FileSystemEntityType.file) {
+      throw const FormatException('Invalid session snapshot.');
+    }
+    return file.readAsString();
+  }
+
+  @override
+  Future<void> save(String sessionId, String snapshot) async {
+    validateSessionId(sessionId);
     final directory = await _directoryResolver();
     await directory.create(recursive: true);
     // A temporary directory gives each save unique staging paths on the same

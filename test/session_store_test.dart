@@ -75,7 +75,39 @@ void main() {
       await first.setLastModified(DateTime.utc(2020));
       await second.setLastModified(DateTime.utc(2021));
       expect(await store.loadLatest(), 'legacy two');
+      expect(await store.listSessionIds(), ['first', 'second']);
+      expect(await store.loadById('first'), 'legacy one');
     });
+
+    test('lists and reads saved sessions independently of latest', () async {
+      expect(await store.listSessionIds(), isEmpty);
+      expect(await store.loadById('missing'), isNull);
+      await store.save('second', 'second version');
+      await store.save('first', 'first version');
+      expect(await store.listSessionIds(), ['first', 'second']);
+      expect(await store.loadById('second'), 'second version');
+      expect(await store.loadLatest(), 'first version');
+      for (final id in ['', '../outside', 'a/b', r'a\b', 'a.json', 'a\n']) {
+        await expectLater(store.loadById(id), throwsArgumentError);
+      }
+    });
+
+    test(
+      'ignores invalid filenames and links without hiding raw contents',
+      () async {
+        await File('${temporary.path}/valid.json').writeAsString('{broken');
+        await File('${temporary.path}/bad.name.json').writeAsString('ignored');
+        await Directory('${temporary.path}/folder.json').create();
+        await Link(
+          '${temporary.path}/alias.json',
+        ).create('${temporary.path}/valid.json');
+        expect(await store.listSessionIds(), ['valid']);
+        // Parsing belongs to the caller so a damaged snapshot can be recovered.
+        expect(await store.loadById('valid'), '{broken');
+        await expectLater(store.loadById('alias'), throwsFormatException);
+        await expectLater(store.loadById('folder'), throwsFormatException);
+      },
+    );
 
     test('rejects malformed pointers and missing snapshots', () async {
       final pointer = File('${temporary.path}/.latest');
@@ -100,6 +132,8 @@ void main() {
       );
       // Snapshot replacement precedes the pointer, so this can exist on failure.
       expect(await File('${temporary.path}/second.json').readAsString(), 'new');
+      expect(await store.listSessionIds(), ['first', 'second']);
+      expect(await store.loadById('second'), 'new');
       await expectLater(store.loadLatest(), throwsFormatException);
     });
 
@@ -110,6 +144,8 @@ void main() {
         },
       );
       await expectLater(broken.loadLatest(), throwsStateError);
+      await expectLater(broken.listSessionIds(), throwsStateError);
+      await expectLater(broken.loadById('valid'), throwsStateError);
       await expectLater(broken.save('valid', '{}'), throwsStateError);
     });
   });

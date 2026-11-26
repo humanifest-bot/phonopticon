@@ -43,14 +43,20 @@ independently.
 
 ## Save, resume and compare
 
-The guided session keeps attempts and saved notes locally and offers a resume
-option for the latest saved session. Browser storage is specific to the browser
+The guided session keeps attempts and saved notes locally. Resume the latest
+session or choose an older one from **Saved sessions**. Use **Review or retry a
+trial** to return to a condition without starting audio; all attempts remain
+in the session. Browser storage is specific to the browser
 and site and can be cleared or unavailable. Check the save status and export a
 copy of the complete session for safekeeping; local storage is not a backup. An exported recording
 contains microphone audio, so share it only deliberately.
 
 Compare one completed stationary, motion and transmitter-off capture from the
-same setup. The existing fixed-criteria analyzer checks the recorded source,
+same setup. The comparison shows the selected trial IDs and times and initially
+selects the latest eligible attempts. Check the selections; choose a specific
+attempt to reproduce the comparison. Cancelled and missing captures are not
+eligible. Record why a retry or selection was made; choosing after inspecting
+results can bias an evaluation. The fixed-criteria analyzer checks the recorded source,
 condition, settings, input route, unique PCM and emitted waveform before
 recomputing the results. It requires a quiet stationary control, rejection of
 the absent chirp in the off control, and motion near 0.25 Hz (within 0.05 Hz)
@@ -58,6 +64,15 @@ with periodic fraction at least 0.25 and periodic RMS at least the larger of
 0.001 or three times stationary RMS. A failed or unavailable comparison is not
 a pass. Keep these criteria fixed while diagnosing; evaluate changes to the
 analysis or thresholds with fresh trials.
+
+The recording-quality panel reports input RMS, exact-zero and clipped samples,
+probe alignment where available, sampled energy in the nominal probe band, and
+high-RMS 100 ms windows. Band energy with the probe on includes the probe; the
+transmitter-off recording helps characterize ambient and handling sounds. A
+flagged window does not identify the sound's cause. The trial-trace chart uses
+elapsed time from each separate recording and labels its selected gate and I/Q
+component; the traces are not synchronized and may represent different
+components. A transmitter-off echo trace can legitimately be unavailable.
 
 One matched set is calibration evidence, not a measured reliability or false
 alarm rate. The operator's movement and timing are not independently measured;
@@ -67,3 +82,5 @@ independently measured trials before making sensitivity claims. Mobile native
 audio capture/playback and iPhone hardware behavior remain unverified. See
 [PHYSICAL_TEST_PLAN.md](PHYSICAL_TEST_PLAN.md) and
 [LIMITATIONS.md](LIMITATIONS.md) for the wider evaluation and limitations.
+For a proposed held-out repeated-trial procedure with independent timing and
+displacement reference, see [REPEATABLE_CALIBRATION.md](REPEATABLE_CALIBRATION.md).

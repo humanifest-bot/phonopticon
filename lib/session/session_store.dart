@@ -11,4 +11,27 @@ abstract interface class SessionStore {
   Future<void> save(String sessionId, String snapshot);
 }
 
+/// Optional access to all saved sessions. Snapshot contents are returned as
+/// stored; callers must validate their format and schema before using them.
+abstract interface class SessionArchive {
+  /// Lists valid session identifiers in lexicographic order.
+  Future<List<String>> listSessionIds();
+
+  /// Returns null for a missing snapshot and throws for an invalid identifier.
+  Future<String?> loadById(String sessionId);
+}
+
+final _sessionIdentifier = RegExp(r'^[a-zA-Z0-9_-]+$');
+
+bool isValidSessionId(String value) {
+  final match = _sessionIdentifier.matchAsPrefix(value);
+  return match != null && match.end == value.length;
+}
+
+void validateSessionId(String value) {
+  if (!isValidSessionId(value)) {
+    throw ArgumentError.value(value, 'sessionId', 'Invalid session identifier');
+  }
+}
+
 SessionStore createSessionStore() => platform.createSessionStore();
