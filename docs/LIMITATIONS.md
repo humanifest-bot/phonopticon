@@ -28,11 +28,19 @@ Flutter generated Android and iOS platform projects. A user-local Android SDK/JD
 
 Web export uses dart:html and targets the JavaScript build, not Flutter WebAssembly. A future WebAssembly port needs JS interop replacement. The current web app is local-only, uses bundled engine/font assets and blocks external connections through its page policy. Do not host a development server on a public interface by default.
 
-The computer adapter uses a local AudioWorklet and explicit permission. Input processing constraints may be ignored; reported settings and latencies do not prove acoustic calibration. Missing input/processor failures stop the trial; failed setup can yield no recording. Partial Stop exports may contain fewer samples and are marked cancelled. Real device performance remains unverified until an actual foreground recording is inspected.
+The computer adapter uses a local AudioWorklet and explicit permission. Input processing constraints may be ignored; reported settings and latencies do not prove acoustic calibration. Missing or nonfinite input stops emission and retains any reported finite prefix as a failed capture. Processor errors, disconnects, watchdog failures, or failed setup can still yield no recording. Partial Stop exports may contain fewer samples and are marked cancelled; output after a reported prefix is unknown. Real device performance remains unverified until an actual foreground recording is inspected.
 
 The simulated backend waits through the bounded trial then generates PCM and analyzes it; the final DSP is synchronous and results are not live streaming. The backend contract is full-trial PCM for this MVP. A native implementation may add block streaming/versioned timing without changing waveform/artifact meaning. Stop/dispose are explicit and no physical device is opened.
 
 Exported Float32 WAVs round internal Float64 samples. Invalid fixtures deliberately retain nonfinite raw samples with invalid analysis labels. Fingerprints are noncryptographic, and an untagged build records missing source revision explicitly. Export metadata/plots are worker-produced evidence, not trusted acceptance receipts.
+
+Before the 2026-11-25 audit fix, browser fingerprints could differ from the
+canonical FNV-1a result for the same bytes; existing exports have not been
+rewritten. Earlier tone-validation exports may also contain notes left over
+from a previous guided session. Review those existing files before sharing;
+the fix prevents future automatic inclusion but does not alter historical
+exports. A session's `loggedUtc` is recorded after capture and analysis, not
+an independently measured audio-end timestamp.
 
 ## Source reproduction and rights
 

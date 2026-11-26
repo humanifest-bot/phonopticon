@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -151,4 +153,98 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('tone validation export does not include another session notes', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1400, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final backend = MockPhysicalBackend();
+    final template = AudioCapture(
+      config: const ExperimentConfig(),
+      emitted: Float64List(0),
+      received: Float64List(0),
+      startedUtc: DateTime.utc(2026),
+      sourceKind: 'PHYSICAL',
+      backendId: 'workflow-mock',
+      deviceMetadata: const {},
+    );
+    final profile = ToneCalibration(
+      id: 'test-only',
+      sampleRate: 48000,
+      toneHz: 10000,
+      amplitude: .02,
+      durationSeconds: 4,
+      route: routeSignature(template),
+      carrierFloor: 1e-9,
+      threshold: .003,
+      trainingFingerprints: const ['a', 'b', 'c'],
+      trainingCounts: const {'stationary': 1, 'moving': 1, 'off': 1},
+    );
+    await tester.pumpWidget(
+      PhonopticonApp(
+        backend: backend,
+        initialCalibration: profile,
+        sessionStore: _MemorySessionStore(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('begin-guided')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Session notes'));
+    await tester.tap(find.text('Session notes'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('note-unexpectedSounds')),
+      'private fixture note from another session',
+    );
+    await tester.ensureVisible(find.byKey(const Key('save-notes')));
+    await tester.tap(find.byKey(const Key('save-notes')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('end-guided')));
+    await tester.tap(find.byKey(const Key('end-guided')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('begin-validation')));
+    await tester.tap(find.byKey(const Key('begin-validation')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('start')));
+    await tester.tap(find.byKey(const Key('start')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Export validation session'));
+    await tester.runAsync(() async {
+      await tester.tap(find.text('Export validation session'));
+      for (var i = 0; i < 100; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        await tester.pump();
+        if (find
+            .textContaining('Temporary file written:')
+            .evaluate()
+            .isNotEmpty)
+          return;
+      }
+    });
+    await tester.pumpAndSettle();
+    final status = tester.widget<SelectableText>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is SelectableText &&
+            (widget.data ?? '').startsWith('Temporary file written:'),
+      ),
+    );
+    final path = status.data!.substring('Temporary file written: '.length);
+    final exported = await tester.runAsync(
+      () async => jsonDecode(await File(path).readAsString()) as Map,
+    );
+    expect(
+      jsonEncode(exported),
+      isNot(contains('private fixture note from another session')),
+    );
+    expect(
+      (exported!['trials'] as List).single,
+      isNot(contains('operatorNotes')),
+    );
+    expect((exported['trials'] as List).single['loggedUtc'], isA<String>());
+  });
 }

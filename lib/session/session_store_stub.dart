@@ -2,7 +2,8 @@ import 'session_store.dart';
 
 SessionStore createSessionStore() => _UnavailableStore();
 
-class _UnavailableStore implements SessionStore, SessionArchive {
+class _UnavailableStore
+    implements SessionStore, SessionArchive, GuardedSessionStore {
   @override
   Future<List<String>> listSessionIds() async =>
       throw UnsupportedError('Local session storage is unavailable.');
@@ -20,4 +21,14 @@ class _UnavailableStore implements SessionStore, SessionArchive {
   @override
   Future<void> save(String sessionId, String snapshot) async =>
       throw UnsupportedError('Local session storage is unavailable.');
+
+  @override
+  Future<void> saveIfUnchanged(
+    String sessionId,
+    String snapshot, {
+    required String? expectedSnapshot,
+  }) async {
+    validateSessionId(sessionId);
+    throw UnsupportedError('Local session storage is unavailable.');
+  }
 }

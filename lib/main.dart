@@ -89,6 +89,8 @@ class _ExperimentScreenState extends State<ExperimentScreen>
   late final SessionStore sessionStore;
   Map<String, dynamic>? guidedSession;
   Map<String, dynamic>? resumableSession;
+  String? sessionBaseline, resumableBaseline;
+  bool sessionConflict = false;
   Map? currentGuidedAttempt;
   List<String> savedSessionIds = [];
   bool sessionOpening = false;
@@ -143,6 +145,7 @@ class _ExperimentScreenState extends State<ExperimentScreen>
         final decoded = decodeSavedSession(value);
         setState(() {
           resumableSession = decoded;
+          resumableBaseline = value;
           sessionStatus = 'A local session is available to resume.';
         });
       }
@@ -201,7 +204,8 @@ class _ExperimentScreenState extends State<ExperimentScreen>
         sessionOpening ||
         guidedIndex != null ||
         runner.busy ||
-        meterActive)
+        meterActive ||
+        exporting)
       return;
     setState(() {
       sessionOpening = true;
@@ -213,6 +217,7 @@ class _ExperimentScreenState extends State<ExperimentScreen>
       final decoded = decodeSavedSession(value, expectedId: id);
       if (!mounted) return;
       resumableSession = decoded;
+      resumableBaseline = value;
       final restored = resumeGuidedSession(fromArchive: true);
       if (mounted && restored)
         setState(() => sessionStatus = 'Opened local session $id.');
@@ -236,11 +241,24 @@ class _ExperimentScreenState extends State<ExperimentScreen>
       };
     });
     try {
-      await sessionStore.save(session['id'] as String, jsonEncode(session));
+      final snapshot = jsonEncode(session);
+      final store = sessionStore;
+      if (store is GuardedSessionStore) {
+        await (store as GuardedSessionStore).saveIfUnchanged(
+          session['id'] as String,
+          snapshot,
+          expectedSnapshot: sessionBaseline,
+        );
+      } else {
+        await store.save(session['id'] as String, snapshot);
+      }
       if (mounted)
         setState(() {
           sessionStatus = 'Session saved locally.';
           resumableSession = session;
+          sessionBaseline = snapshot;
+          resumableBaseline = snapshot;
+          sessionConflict = false;
           final id = session['id'] as String;
           if (!savedSessionIds.contains(id)) {
             savedSessionIds = [id, ...savedSessionIds];
@@ -253,8 +271,10 @@ class _ExperimentScreenState extends State<ExperimentScreen>
       if (mounted)
         setState(() {
           sessionSaveFailed = true;
-          sessionStatus =
-              'Session save failed: $error. Retry saving before continuing.';
+          sessionConflict = error is SessionWriteConflict;
+          sessionStatus = sessionConflict
+              ? 'Session changed in another window or is locked. Export your work or save it as a new session.'
+              : 'Session save failed: $error. Retry saving before continuing.';
         });
       return false;
     } finally {
@@ -262,15 +282,63 @@ class _ExperimentScreenState extends State<ExperimentScreen>
     }
   }
 
-  Future<void> beginGuidedSession() async {
-    if (sessionOpening || guidedIndex != null || runner.busy || meterActive)
+  String newSessionId() {
+    final random = math.Random.secure();
+    final nonce = List.generate(
+      16,
+      (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
+    ).join();
+    return 'session-${DateTime.now().toUtc().microsecondsSinceEpoch}-$nonce';
+  }
+
+  Future<void> saveGuidedAsCopy() async {
+    final session = guidedSession;
+    if (session == null || sessionSaving || exporting || !sessionConflict)
       return;
+    final previousId = session['id'];
+    final String copyId;
+    try {
+      copyId = newSessionId();
+    } catch (_) {
+      setState(
+        () => sessionStatus =
+            'Could not create a secure session ID. Export your current work.',
+      );
+      return;
+    }
+    setState(() {
+      session['id'] = copyId;
+      session['copiedFromSessionId'] = previousId;
+      session['copiedUtc'] = DateTime.now().toUtc().toIso8601String();
+      sessionBaseline = null;
+      sessionConflict = false;
+    });
+    await saveGuidedSession();
+  }
+
+  Future<void> beginGuidedSession() async {
+    if (sessionOpening ||
+        guidedIndex != null ||
+        runner.busy ||
+        meterActive ||
+        exporting)
+      return;
+    final String id;
+    try {
+      id = newSessionId();
+    } catch (_) {
+      setState(
+        () => sessionStatus =
+            'Could not create a secure session ID. Existing sessions are unchanged.',
+      );
+      return;
+    }
     for (final controller in notesControllers.values) {
       controller.clear();
     }
     guidedSession = {
       'schemaVersion': 1,
-      'id': 'session-${DateTime.now().toUtc().microsecondsSinceEpoch}',
+      'id': id,
       'createdUtc': DateTime.now().toUtc().toIso8601String(),
       'index': 0,
       'complete': false,
@@ -281,6 +349,8 @@ class _ExperimentScreenState extends State<ExperimentScreen>
       comparisonStatus = null;
       notesDirty = false;
       sessionSaveFailed = false;
+      sessionConflict = false;
+      sessionBaseline = null;
     });
     applyGuidedStep(0);
     await saveGuidedSession();
@@ -290,11 +360,13 @@ class _ExperimentScreenState extends State<ExperimentScreen>
     if ((sessionOpening && !fromArchive) ||
         guidedIndex != null ||
         runner.busy ||
-        meterActive)
+        meterActive ||
+        exporting)
       return false;
     final saved = resumableSession;
     if (saved == null) return false;
     guidedSession = saved;
+    sessionBaseline = resumableBaseline;
     final notes = saved['notes'];
     for (final entry in notesControllers.entries) {
       entry.value.text = notes is Map && notes[entry.key] is String
@@ -396,7 +468,9 @@ class _ExperimentScreenState extends State<ExperimentScreen>
     final bundle = attempt['bundle'];
     final manifest = bundle is Map ? bundle['manifest'] : null;
     final id = manifest is Map ? manifest['trialId'] : null;
-    final time = manifest is Map ? manifest['startedUtc'] : attempt['endedUtc'];
+    final time = manifest is Map
+        ? manifest['startedUtc']
+        : (attempt['loggedUtc'] ?? attempt['endedUtc']);
     final error = attempt['error'];
     return '${index + 1}. $condition · ${attempt['state'] ?? 'unknown'} · ${id ?? 'no audio bundle'} · ${time ?? 'time unavailable'}${error == null ? '' : '\n$error'}';
   }
@@ -483,18 +557,18 @@ class _ExperimentScreenState extends State<ExperimentScreen>
 
   Future<void> exportGuidedSession() async {
     if (guidedSession == null) return;
-    if (notesDirty && !await saveGuidedSession()) return;
-    if (!mounted) return;
     setState(() {
       exporting = true;
       exportStatus = null;
     });
     try {
       final id = guidedSession!['id'] as String;
-      final message = await saveBundle(
-        jsonEncode(guidedSession),
-        'phonopticon-$id',
-      );
+      final snapshot = Map<String, dynamic>.from(guidedSession!)
+        ..['notes'] = {
+          for (final entry in notesControllers.entries)
+            entry.key: entry.value.text,
+        };
+      final message = await saveBundle(jsonEncode(snapshot), 'phonopticon-$id');
       if (mounted) setState(() => exportStatus = message);
     } catch (error) {
       if (mounted)
@@ -664,11 +738,7 @@ class _ExperimentScreenState extends State<ExperimentScreen>
           'expectedCondition': scenario.name,
           'state': runner.state.name,
           'error': runner.error,
-          'endedUtc': DateTime.now().toUtc().toIso8601String(),
-          'operatorNotes': {
-            for (final entry in notesControllers.entries)
-              entry.key: entry.value.text,
-          },
+          'loggedUtc': DateTime.now().toUtc().toIso8601String(),
           'bundle': capture == null
               ? null
               : artifactBundle(capture, runner.result),
@@ -685,6 +755,11 @@ class _ExperimentScreenState extends State<ExperimentScreen>
           'id': guidedTrials[guidedIndex!]['id'],
           'state': runner.state.name,
           'error': runner.error,
+          'loggedUtc': DateTime.now().toUtc().toIso8601String(),
+          'operatorNotes': {
+            for (final entry in notesControllers.entries)
+              entry.key: entry.value.text,
+          },
           'exported': false,
           'bundle': capture == null
               ? null
@@ -1016,6 +1091,7 @@ class _ExperimentScreenState extends State<ExperimentScreen>
                       !busy &&
                       !meterActive &&
                       !sessionOpening &&
+                      !exporting &&
                       native &&
                       runner.backend.capabilities.available
                   ? beginGuidedSession
@@ -1026,7 +1102,12 @@ class _ExperimentScreenState extends State<ExperimentScreen>
           if (guidedStep == null && resumableSession != null)
             OutlinedButton.icon(
               key: const Key('resume-guided'),
-              onPressed: !busy && !meterActive && !sessionOpening && native
+              onPressed:
+                  !busy &&
+                      !meterActive &&
+                      !sessionOpening &&
+                      !exporting &&
+                      native
                   ? () => resumeGuidedSession()
                   : null,
               icon: const Icon(Icons.restore),
@@ -1045,8 +1126,18 @@ class _ExperimentScreenState extends State<ExperimentScreen>
                     key: Key('open-session-$id'),
                     title: Text(id),
                     trailing: const Icon(Icons.chevron_right),
-                    enabled: !busy && !meterActive && !sessionOpening && native,
-                    onTap: !busy && !meterActive && !sessionOpening && native
+                    enabled:
+                        !busy &&
+                        !meterActive &&
+                        !sessionOpening &&
+                        !exporting &&
+                        native,
+                    onTap:
+                        !busy &&
+                            !meterActive &&
+                            !sessionOpening &&
+                            !exporting &&
+                            native
                         ? () => openSavedSession(id)
                         : null,
                   ),
@@ -1100,8 +1191,17 @@ class _ExperimentScreenState extends State<ExperimentScreen>
             if (sessionSaveFailed)
               OutlinedButton(
                 key: const Key('retry-save'),
-                onPressed: sessionSaving ? null : saveGuidedSession,
+                onPressed: sessionSaving || exporting
+                    ? null
+                    : saveGuidedSession,
                 child: const Text('Retry saving session'),
+              ),
+            if (sessionConflict)
+              OutlinedButton.icon(
+                key: const Key('save-session-copy'),
+                onPressed: sessionSaving || exporting ? null : saveGuidedAsCopy,
+                icon: const Icon(Icons.copy),
+                label: const Text('Save as a new local session'),
               ),
             ExpansionTile(
               title: const Text('Session notes'),
@@ -1123,7 +1223,7 @@ class _ExperimentScreenState extends State<ExperimentScreen>
                     child: TextField(
                       key: Key('note-${entry.key}'),
                       controller: notesControllers[entry.key],
-                      enabled: !sessionSaving,
+                      enabled: !sessionSaving && !exporting,
                       onChanged: (_) => setState(() => notesDirty = true),
                       decoration: InputDecoration(
                         labelText: entry.value,
@@ -1133,7 +1233,9 @@ class _ExperimentScreenState extends State<ExperimentScreen>
                   ),
                 TextButton(
                   key: const Key('save-notes'),
-                  onPressed: sessionSaving ? null : saveGuidedSession,
+                  onPressed: sessionSaving || exporting
+                      ? null
+                      : saveGuidedSession,
                   child: const Text('Save notes locally'),
                 ),
               ],
@@ -1636,6 +1738,9 @@ class _ExperimentScreenState extends State<ExperimentScreen>
               ),
             const Text(
               'Operator-paced movement; timing and displacement are not independently measured. This is not a breathing or medical validation.',
+            ),
+            const Text(
+              'Matching reported settings does not verify the physical output route, system volume, or unreported audio processing.',
             ),
             if (trialTraces != null)
               TrialTraceComparisonPanel(comparison: trialTraces!),

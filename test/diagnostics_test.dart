@@ -159,6 +159,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.textContaining('gate 0.6 m, component I'), findsOneWidget);
+      expect(find.textContaining('vertical scale: ±0.222'), findsOneWidget);
     },
   );
 }

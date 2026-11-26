@@ -271,7 +271,9 @@ class ToneCalibration {
           c.config.durationSeconds != durationSeconds ||
           routeSignature(c) != route)
         throw StateError('Calibration route/settings mismatch');
-      if (trainingFingerprints.contains(captureFingerprint(c))) {
+      final wav = wavBytes(c.received, c.actualSampleRate);
+      if (trainingFingerprints.contains(fingerprint(wav)) ||
+          trainingFingerprints.contains(legacyBrowserFingerprint(wav))) {
         throw StateError(
           'Calibration recording cannot count as held-out evaluation',
         );

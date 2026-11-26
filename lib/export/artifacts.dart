@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import '../domain/experiment.dart';
+import '../signal/trace_time.dart';
 
 Uint8List wavBytes(Float64List samples, int rate) {
   final out = ByteData(44 + samples.length * 4);
@@ -34,7 +35,21 @@ Uint8List wavBytes(Float64List samples, int rate) {
 String fingerprint(List<int> bytes) {
   var hash = 0x811c9dc5;
   for (final byte in bytes) {
-    hash = ((hash ^ byte) * 0x01000193) & 0xffffffff;
+    final value = (hash ^ byte) & 0xffffffff;
+    // 0x01000193 = 0x01000000 + 0x193. Both products stay exactly
+    // representable in JavaScript's 53-bit integer precision.
+    hash = (value * 0x193 + ((value & 0xff) << 24)) & 0xffffffff;
+  }
+  return hash.toRadixString(16).padLeft(8, '0');
+}
+
+/// Compatibility only: reproduce the pre-fix browser's rounded double
+/// multiplication. Never use this for new artifact identifiers.
+String legacyBrowserFingerprint(List<int> bytes) {
+  var hash = 0x811c9dc5;
+  for (final byte in bytes) {
+    final value = (hash ^ byte) & 0xffffffff;
+    hash = (value.toDouble() * 0x01000193).toInt() & 0xffffffff;
   }
   return hash.toRadixString(16).padLeft(8, '0');
 }
@@ -42,22 +57,34 @@ String fingerprint(List<int> bytes) {
 String movementSvg(AnalysisResult r, {String sourceKind = 'SIMULATED'}) {
   if (r.frames.isEmpty)
     return '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="240"><text x="20" y="40">$sourceKind — no valid analysis</text></svg>';
-  final maxTime = r.frames.last.time;
+  final segments = elapsedTraceSegments(r.frames);
+  final frames = [for (final segment in segments) ...segment];
+  if (frames.isEmpty)
+    return '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="240"><text x="20" y="40">$sourceKind — no valid elapsed-time trace</text></svg>';
+  final maxTime = frames.fold<double>(0, (v, frame) => math.max(v, frame.time));
   final signed = r.settings.containsKey('breathingAlgorithm');
   final maxValue = math.max(
     math.max(1e-12, r.threshold * 2),
-    r.frames
-        .map((f) => signed ? f.movement.abs() : f.movement)
-        .reduce(math.max),
+    frames.map((f) => signed ? f.movement.abs() : f.movement).reduce(math.max),
   );
   final origin = signed ? 125.0 : 200.0;
   final scale = (signed ? 75.0 : 150.0) / maxValue;
-  final points = r.frames
-      .map(
-        (f) =>
-            '${(40 + f.time / maxTime * 720).toStringAsFixed(2)},${(origin - f.movement * scale).toStringAsFixed(2)}',
-      )
-      .join(' ');
+  final traces = StringBuffer();
+  for (final segment in segments) {
+    String point(AnalysisFrame f) =>
+        '${(40 + (maxTime > 0 ? f.time / maxTime * 720 : 0)).toStringAsFixed(2)},${(origin - f.movement * scale).toStringAsFixed(2)}';
+    if (segment.length == 1) {
+      final parts = point(segment.single).split(',');
+      traces.write(
+        '<circle cx="${parts[0]}" cy="${parts[1]}" r="1.5" fill="#006d77"/>',
+      );
+    } else {
+      final points = segment.map(point).join(' ');
+      traces.write(
+        '<polyline points="$points" fill="none" stroke="#006d77" stroke-width="2"/>',
+      );
+    }
+  }
   final y = origin - r.threshold * scale;
   final rule = r.settings['calibrationProfile'] == null
       ? 'fixture'
@@ -68,27 +95,37 @@ String movementSvg(AnalysisResult r, {String sourceKind = 'SIMULATED'}) {
   final bounds = signed
       ? '±${maxValue.toStringAsPrecision(3)}'
       : '0–${maxValue.toStringAsFixed(3)}';
-  return '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="250" viewBox="0 0 800 250"><rect width="800" height="250" fill="#f6f8fb"/><text x="40" y="25">$sourceKind $label</text><line x1="40" x2="760" y1="$y" y2="$y" stroke="#b05820" stroke-dasharray="6 4"/><polyline points="$points" fill="none" stroke="#006d77" stroke-width="2"/><text x="40" y="230">Time (seconds), 0–${maxTime.toStringAsFixed(2)} · relative scale $bounds</text></svg>';
+  return '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="250" viewBox="0 0 800 250"><rect width="800" height="250" fill="#f6f8fb"/><text x="40" y="25">$sourceKind $label</text><line x1="40" x2="760" y1="$y" y2="$y" stroke="#b05820" stroke-dasharray="6 4"/>$traces<text x="40" y="230">Time (seconds), 0–${maxTime.toStringAsFixed(2)} · relative scale $bounds</text></svg>';
 }
 
 String spectrumSvg(AnalysisResult r, {String sourceKind = 'SIMULATED'}) {
   if (r.frames.isEmpty || r.axis.isEmpty)
     return '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="240"><text x="20" y="40">$sourceKind — no reliable spectrum</text></svg>';
+  final frames = r.frames.where((f) => f.time.isFinite && f.time >= 0).toList();
+  if (frames.isEmpty)
+    return '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="240"><text x="20" y="40">$sourceKind — no reliable elapsed-time spectrum</text></svg>';
+  final maxTime = frames.fold<double>(0, (v, frame) => math.max(v, frame.time));
+  final cells = heatmapTimeCells(r.frames);
   final out = StringBuffer(
-    '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="400" viewBox="0 0 800 400"><rect width="800" height="400" fill="#08162c"/><g fill="white" font-family="sans-serif" font-size="12"><text x="60" y="24">$sourceKind — ${r.axisLabel} versus time</text><text x="60" y="380">Time (seconds), 0–${r.frames.last.time.toStringAsFixed(2)}</text><text x="5" y="52">${r.axis.last.toStringAsFixed(2)}</text><text x="5" y="346">${r.axis.first.toStringAsFixed(2)}</text></g>',
+    '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="400" viewBox="0 0 800 400"><rect width="800" height="400" fill="#08162c"/><g fill="white" font-family="sans-serif" font-size="12"><text x="60" y="24">$sourceKind — ${r.axisLabel} versus time</text><text x="60" y="380">Time (seconds), 0–${maxTime.toStringAsFixed(2)}</text><text x="5" y="52">${r.axis.last.toStringAsFixed(2)}</text><text x="5" y="346">${r.axis.first.toStringAsFixed(2)}</text></g>',
   );
   final low = r.axisLabel.startsWith('Doppler') ? -120.0 : -180.0;
   final high = low + 100;
-  for (var t = 0; t < r.frames.length; t++) {
+  for (final cell in cells) {
+    final frame = r.frames[cell.frameIndex];
+    final left = maxTime > 0 ? 60 + cell.startSeconds / maxTime * 720 : 60.0;
+    final right = maxTime > 0 ? 60 + cell.endSeconds / maxTime * 720 : 60.0;
+    // A single distinct timestamp has no known duration; show one-pixel marker.
+    final x = right > left ? left : (left - .5).clamp(60.0, 779.0);
+    final width = right > left ? right - left : 1.0;
     for (var k = 0; k < r.axis.length; k++) {
-      final db =
-          10 * math.log(math.max(1e-24, r.frames[t].power[k])) / math.ln10;
+      final db = 10 * math.log(math.max(1e-24, frame.power[k])) / math.ln10;
       final level = ((db - low) / (high - low)).clamp(0.0, 1.0);
       final red = (15 + 225 * level).round(),
           green = (25 + 170 * level).round(),
           blue = (45 + 45 * level).round();
       out.write(
-        '<rect x="${60 + t * 720 / r.frames.length}" y="${45 + (r.axis.length - 1 - k) * 300 / r.axis.length}" width="${720 / r.frames.length + 0.1}" height="${300 / r.axis.length + 0.1}" fill="rgb($red,$green,$blue)"/>',
+        '<rect x="$x" y="${45 + (r.axis.length - 1 - k) * 300 / r.axis.length}" width="$width" height="${300 / r.axis.length + 0.1}" fill="rgb($red,$green,$blue)"/>',
       );
     }
   }

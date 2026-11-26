@@ -45,6 +45,24 @@ class _Store implements SessionStore, SessionArchive {
       jsonDecode(snapshot!) as Map<String, dynamic>;
 }
 
+class _GuardedStore extends _Store implements GuardedSessionStore {
+  @override
+  Future<void> saveIfUnchanged(
+    String id,
+    String value, {
+    required String? expectedSnapshot,
+  }) async {
+    final current = snapshots[id];
+    if ((expectedSnapshot == null && current != null) ||
+        (expectedSnapshot != null &&
+            current != expectedSnapshot &&
+            current != value)) {
+      throw const SessionWriteConflict('fixture conflict');
+    }
+    await save(id, value);
+  }
+}
+
 class _Backend implements AudioBackend {
   int starts = 0;
   bool failNext = false;
@@ -119,6 +137,7 @@ void main() {
       await tapKey(tester, 'begin-guided');
       expect(backend.starts, 0);
       expect(store.saved['index'], 0);
+      expect(store.saved['id'], matches(RegExp(r'^session-\d+-[0-9a-f]{32}$')));
       expect(store.saved['attempts'], isEmpty);
 
       await tester.ensureVisible(find.text('Session notes'));
@@ -173,6 +192,106 @@ void main() {
     expect(backend.starts, 2);
     expect(find.byKey(const Key('next-guided')), findsOneWidget);
   });
+
+  testWidgets('guided attempts keep their own notes and completion time', (
+    tester,
+  ) async {
+    final store = _Store();
+    final backend = _Backend()..failNext = true;
+    await showApp(tester, backend, store);
+    await tapKey(tester, 'begin-guided');
+    await tester.ensureVisible(find.text('Session notes'));
+    await tester.tap(find.text('Session notes'));
+    await tester.pumpAndSettle();
+    final field = find.byKey(const Key('note-unexpectedSounds'));
+    await tester.enterText(field, 'fan running');
+    await tapKey(tester, 'start');
+    await tester.ensureVisible(field);
+    await tester.enterText(field, 'fan stopped');
+    await tapKey(tester, 'start');
+    final attempts = store.saved['attempts'] as List;
+    expect(attempts, hasLength(2));
+    expect(attempts.first['state'], 'failed');
+    expect(attempts.first['operatorNotes']['unexpectedSounds'], 'fan running');
+    expect(attempts.last['operatorNotes']['unexpectedSounds'], 'fan stopped');
+    expect(DateTime.tryParse(attempts.first['loggedUtc'] as String), isNotNull);
+    expect(DateTime.tryParse(attempts.last['loggedUtc'] as String), isNotNull);
+  });
+
+  testWidgets(
+    'conflict preserves both versions and permits exporting unsaved notes',
+    (tester) async {
+      final store = _GuardedStore();
+      final backend = _Backend();
+      await showApp(tester, backend, store);
+      await tapKey(tester, 'begin-guided');
+      final originalId = store.saved['id'] as String;
+      final other = jsonEncode({...store.saved, 'otherWindow': 'preserve'});
+      store.snapshots[originalId] = other;
+
+      await tester.ensureVisible(find.text('Session notes'));
+      await tester.tap(find.text('Session notes'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('note-unexpectedSounds')),
+        'unsaved local observation',
+      );
+      await tapKey(tester, 'save-notes');
+      expect(
+        find.textContaining('Session changed in another window'),
+        findsOneWidget,
+      );
+      expect(store.snapshots[originalId], other);
+      expect(
+        tester.widget<FilledButton>(find.byKey(const Key('start'))).onPressed,
+        isNull,
+      );
+
+      await tester.ensureVisible(
+        find.byKey(const Key('export-guided-session')),
+      );
+      await tester.runAsync(() async {
+        await tester.tap(find.byKey(const Key('export-guided-session')));
+        for (var i = 0; i < 100; i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+          await tester.pump();
+          if (find
+              .textContaining('Temporary file written:')
+              .evaluate()
+              .isNotEmpty)
+            return;
+        }
+      });
+      await tester.pumpAndSettle();
+      final status = tester.widget<SelectableText>(
+        find.byWidgetPredicate(
+          (w) =>
+              w is SelectableText &&
+              (w.data ?? '').startsWith('Temporary file written:'),
+        ),
+      );
+      final path = status.data!.substring('Temporary file written: '.length);
+      final exported = await tester.runAsync(
+        () async => jsonDecode(await File(path).readAsString()) as Map,
+      );
+      expect(
+        (exported!['notes'] as Map)['unexpectedSounds'],
+        'unsaved local observation',
+      );
+      expect(store.snapshots[originalId], other);
+
+      await tapKey(tester, 'save-session-copy');
+      final copy = store.saved;
+      expect(copy['id'], isNot(originalId));
+      expect(copy['copiedFromSessionId'], originalId);
+      expect(
+        (copy['notes'] as Map)['unexpectedSounds'],
+        'unsaved local observation',
+      );
+      expect(store.snapshots[originalId], other);
+      expect(backend.starts, 0);
+    },
+  );
 
   testWidgets('older saved session opens with its notes and no audio', (
     tester,

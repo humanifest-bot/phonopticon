@@ -19,11 +19,27 @@ class SonarCapture extends AudioWorkletProcessor {
     output.fill(0);
     if (this.stopped) return false;
     const count = Math.min(output.length, this.tx.length - this.position);
+    // Do not emit into a trial whose microphone stream has already failed.
+    // Report only the known synchronized prefix and stop immediately.
+    if (!input || input.length < count) {
+      this.missing += count;
+      this.stopped = true;
+      this.port.postMessage({samples:this.rx.subarray(0,this.position),missing:this.missing,cancelled:true},[this.rx.buffer]);
+      return false;
+    }
+    // Reject the entire invalid block before emitting any of its samples.
+    // Preserve the finite synchronized prefix from preceding blocks.
+    for (let j = 0; j < count; j++) {
+      if (!Number.isFinite(input[j])) {
+        this.stopped = true;
+        this.port.postMessage({samples:this.rx.subarray(0,this.position),invalid:true,cancelled:true},[this.rx.buffer]);
+        return false;
+      }
+    }
     for (let j = 0; j < count; j++) {
       output[j] = this.tx[this.position + j];
-      this.rx[this.position + j] = input ? input[j] : 0;
+      this.rx[this.position + j] = input[j];
     }
-    if (!input) this.missing += count;
     this.position += count;
     if (this.position === this.tx.length) {
       this.stopped = true;

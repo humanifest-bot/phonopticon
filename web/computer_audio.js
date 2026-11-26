@@ -81,25 +81,28 @@
     const boundedDuration = c.mode === 'breathing'
       ? c.durationSeconds === 30
       : c.durationSeconds >= 1 && c.durationSeconds <= 10;
+    const transmitterOff = c.scenario === 'transmitterOff' || c.scenario === 'silence';
     if (!boundedDuration || !Number.isInteger(c.sampleRate) || c.sampleRate < 22050 || c.sampleRate > 96000 ||
         !(c.amplitude > 0 && c.amplitude <= .05) ||
         tx.length !== Math.round(c.sampleRate * c.durationSeconds) ||
-        !tx.every(x => Number.isFinite(x) && Math.abs(x) <= .050001)) throw Error('Invalid physical waveform/limit.');
+        !tx.every(x => Number.isFinite(x) && Math.abs(x) <= Math.fround(c.amplitude) && (!transmitterOff || x === 0))) throw Error('Invalid physical waveform/limit.');
     const context = new AudioContext({sampleRate:c.sampleRate, latencyHint:'interactive'});
     let stream, node, source, timer, progress, permissionTimer, resolve, reject, samples = null;
     let settled = false, recording = false, sampleStart = null;
     const startedUtc = new Date().toISOString(), startedMono = performance.now();
     const result = new Promise((yes,no) => { resolve=yes; reject=no; });
-    const state = {elapsed:0, cancel() {
-      if (settled) return;
+    const state = {elapsed:0, stopRequested:false, cancel() {
+      if (settled || state.stopRequested) return;
+      state.stopRequested = true;
       if (node) {
         node.port.postMessage({stop:true});
         clearTimeout(timer);
         timer = setTimeout(() => state.finish(true),200);
       } else state.finish(true);
-    }, finish(cancelled, error=null) {
+    }, finish(cancelled, error=null, captureFailure=null) {
       if (settled) return;
       settled = true;
+      cancelled = cancelled || state.stopRequested;
       clearTimeout(timer); clearTimeout(permissionTimer); clearInterval(progress);
       document.removeEventListener('visibilitychange', hidden);
       if (node) { node.port.postMessage({stop:true}); node.disconnect(); }
@@ -111,11 +114,15 @@
         audioContextStartSeconds:sampleStart, browser:navigator.userAgent,
         requestedProcessing:{echoCancellation:false,noiseSuppression:false,autoGainControl:false},
         note:'Input may be resampled to the audio context clock. Settings are not proof of raw hardware response.'};
+      if (cancelled || captureFailure) {
+        metadata.emittedPrefixSamples = samples?.length || 0;
+        metadata.emittedTail = 'Unknown after the reported captured prefix; partial output is not claimed complete.';
+      }
       if (stream) stream.getTracks().forEach(t => t.stop());
       const close = context.close().catch(() => {});
       if (active === state) active = null;
       if (error) { close.then(() => reject(error)); return; }
-      close.then(() => resolve(JSON.stringify({samples:samples ? Array.from(samples) : [], cancelled,
+      close.then(() => resolve(JSON.stringify({samples:samples ? Array.from(samples) : [], cancelled, failure:captureFailure,
         startedUtc, elapsedMicroseconds:Math.round((performance.now()-startedMono)*1000),
         actualSampleRate:context.sampleRate, metadata})));
     }};
@@ -142,9 +149,31 @@
         node.onprocessorerror = () => state.finish(true,Error('AudioWorklet failed; trial stopped.'));
         node.port.onmessage = e => {
           if (settled) return;
-          samples = e.data.samples;
-          if (e.data.missing) { state.finish(true,Error('Missing microphone input blocks; no physical analysis accepted.')); return; }
-          state.finish(!!e.data.cancelled);
+          const payload = e?.data;
+          const raw = payload?.samples;
+          let failure = null;
+          if (!(raw instanceof Float32Array)) {
+            samples = null;
+            failure = 'Invalid microphone capture payload; no physical analysis accepted.';
+          } else {
+            const bound = Math.min(raw.length, tx.length);
+            let finiteLength = 0;
+            while (finiteLength < bound && Number.isFinite(raw[finiteLength])) finiteLength++;
+            samples = raw.subarray(0, finiteLength);
+            if (finiteLength < bound) {
+              failure = 'Nonfinite microphone sample; retained only the preceding finite prefix.';
+            } else if (raw.length > tx.length) {
+              failure = 'Microphone capture exceeded the configured length; retained only the configured prefix.';
+            } else if (payload.invalid) {
+              failure = 'Nonfinite microphone input block; retained only the preceding finite prefix.';
+            } else if (payload.missing) {
+              failure = 'Missing microphone input blocks; no physical analysis accepted.';
+            } else if (!payload.cancelled && !state.stopRequested && raw.length !== tx.length) {
+              failure = 'Incomplete microphone capture; no physical analysis accepted.';
+            }
+          }
+          if (failure) { state.finish(false,null,failure); return; }
+          state.finish(!!payload.cancelled);
         };
         for (const track of stream.getTracks()) track.onended = () => {
           if (!settled) state.finish(true,Error('Microphone disconnected.'));

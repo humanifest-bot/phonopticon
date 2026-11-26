@@ -79,6 +79,155 @@ void main() {
       expect(await store.loadById('first'), 'legacy one');
     });
 
+    test(
+      'legacy latest ignores newer files with invalid session names',
+      () async {
+        final valid = File('${temporary.path}/valid.json');
+        final invalid = File('${temporary.path}/not.a.session.json');
+        await valid.writeAsString('valid legacy session');
+        await invalid.writeAsString('unrelated file');
+        await valid.setLastModified(DateTime.utc(2020));
+        await invalid.setLastModified(DateTime.utc(2021));
+        expect(await store.loadLatest(), 'valid legacy session');
+        expect(await invalid.readAsString(), 'unrelated file');
+      },
+    );
+
+    test(
+      'guarded writes reject stale or duplicate session snapshots',
+      () async {
+        await store.saveIfUnchanged('first', 'v1', expectedSnapshot: null);
+        await expectLater(
+          store.saveIfUnchanged('first', 'v1', expectedSnapshot: null),
+          throwsA(isA<SessionWriteConflict>()),
+          reason:
+              'An independently created identical record is still a collision.',
+        );
+        await store.saveIfUnchanged('second', 'other', expectedSnapshot: null);
+        await store.saveIfUnchanged('first', 'v2', expectedSnapshot: 'v1');
+        await expectLater(
+          store.saveIfUnchanged('first', 'stale', expectedSnapshot: 'v1'),
+          throwsA(isA<SessionWriteConflict>()),
+        );
+        await expectLater(
+          store.saveIfUnchanged('first', 'duplicate', expectedSnapshot: null),
+          throwsA(isA<SessionWriteConflict>()),
+        );
+        await expectLater(
+          store.saveIfUnchanged(
+            'missing',
+            'unexpected',
+            expectedSnapshot: 'prior',
+          ),
+          throwsA(isA<SessionWriteConflict>()),
+        );
+        expect(await store.loadById('first'), 'v2');
+        expect(await store.loadById('second'), 'other');
+        expect(await store.loadLatest(), 'v2');
+      },
+    );
+
+    test('concurrent guarded saves cannot both replace one baseline', () async {
+      await store.saveIfUnchanged('first', 'v1', expectedSnapshot: null);
+      Future<String> write(String value) async {
+        try {
+          await store.saveIfUnchanged('first', value, expectedSnapshot: 'v1');
+          return 'saved:$value';
+        } on SessionWriteConflict {
+          return 'conflict';
+        }
+      }
+
+      final results = await Future.wait([
+        for (var i = 0; i < 12; i++) write('candidate-$i'),
+      ]);
+      expect(results.where((value) => value == 'conflict'), hasLength(11));
+      expect(
+        results.where((value) => value.startsWith('saved:')),
+        hasLength(1),
+      );
+      expect(
+        'saved:${await store.loadById('first')}',
+        results.singleWhere((value) => value.startsWith('saved:')),
+      );
+    });
+
+    test('a pre-existing save marker blocks without being removed', () async {
+      await store.saveIfUnchanged('first', 'v1', expectedSnapshot: null);
+      final marker = File('${temporary.path}/.first.write-lock');
+      await marker.writeAsString('stale or in use');
+      await expectLater(
+        store.saveIfUnchanged('first', 'v2', expectedSnapshot: 'v1'),
+        throwsA(isA<SessionWriteConflict>()),
+      );
+      await expectLater(
+        store.save('first', 'unsafe'),
+        throwsA(isA<SessionWriteConflict>()),
+      );
+      expect(await marker.readAsString(), 'stale or in use');
+      expect(await store.loadById('first'), 'v1');
+      await store.saveIfUnchanged(
+        'recovered-copy',
+        'unsaved changes',
+        expectedSnapshot: null,
+      );
+      expect(await store.loadById('recovered-copy'), 'unsaved changes');
+    });
+
+    test('identical retry completes after the pointer update failed', () async {
+      await store.saveIfUnchanged('first', 'v1', expectedSnapshot: null);
+      final pointer = File('${temporary.path}/.latest');
+      await pointer.rename('${temporary.path}/old-pointer');
+      final obstruction = Directory('${temporary.path}/.latest');
+      await obstruction.create();
+      await expectLater(
+        store.saveIfUnchanged('first', 'v2', expectedSnapshot: 'v1'),
+        throwsA(isA<FileSystemException>()),
+      );
+      expect(await store.loadById('first'), 'v2');
+      await obstruction.delete(); // This empty directory is test-created.
+      await store.saveIfUnchanged('first', 'v2', expectedSnapshot: 'v1');
+      expect(await store.loadLatest(), 'v2');
+      expect(
+        await File('${temporary.path}/old-pointer').readAsString(),
+        'first',
+      );
+    });
+
+    test(
+      'initial pointer failure cannot adopt an existing identical record',
+      () async {
+        final obstruction = Directory('${temporary.path}/.latest');
+        await obstruction.create();
+        await expectLater(
+          store.saveIfUnchanged(
+            'created',
+            'new snapshot',
+            expectedSnapshot: null,
+          ),
+          throwsA(isA<FileSystemException>()),
+        );
+        expect(await store.loadById('created'), 'new snapshot');
+        await obstruction.delete(); // This empty directory is test-created.
+        await expectLater(
+          store.saveIfUnchanged(
+            'created',
+            'new snapshot',
+            expectedSnapshot: null,
+          ),
+          throwsA(isA<SessionWriteConflict>()),
+        );
+        expect(await store.loadById('created'), 'new snapshot');
+        await store.saveIfUnchanged(
+          'copy',
+          'new snapshot',
+          expectedSnapshot: null,
+        );
+        expect(await store.loadLatest(), 'new snapshot');
+        expect(await store.loadById('created'), 'new snapshot');
+      },
+    );
+
     test('lists and reads saved sessions independently of latest', () async {
       expect(await store.listSessionIds(), isEmpty);
       expect(await store.loadById('missing'), isNull);

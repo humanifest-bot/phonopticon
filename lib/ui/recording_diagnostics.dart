@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../domain/experiment.dart';
 import '../signal/spectrum.dart';
+import '../signal/trace_time.dart' show elapsedTraceSegments;
 
 /// Descriptive PCM measurements. These do not identify the cause of a spike.
 class RecordingDiagnostics {
@@ -254,7 +255,8 @@ class TrialTraceComparisonPanel extends StatelessWidget {
           ),
         ),
         Text(
-          'Time: 0–${maxTime.toStringAsFixed(1)} s · vertical scale: ±${maxValue.toStringAsPrecision(3)} normalized units',
+          // The painter uses 90% of the height, leaving 5% at each edge.
+          'Time: 0–${maxTime.toStringAsFixed(1)} s · vertical scale: ±${(maxValue / .9).toStringAsPrecision(3)} normalized units',
         ),
         for (var i = 0; i < comparison.series.length; i++)
           Builder(
@@ -311,21 +313,17 @@ class _TracePainter extends CustomPainter {
         ..strokeWidth = 1.5
         ..style = PaintingStyle.stroke;
       final path = Path();
-      var started = false;
-      for (final frame in result.frames) {
-        if (!frame.time.isFinite ||
-            !frame.movement.isFinite ||
-            frame.time < 0) {
-          started = false;
-          continue;
-        }
-        final x = frame.time / maxTime * size.width;
-        final y = size.height / 2 - frame.movement / maxAbs * size.height * .45;
-        if (started) {
-          path.lineTo(x, y);
-        } else {
-          path.moveTo(x, y);
-          started = true;
+      for (final segment in elapsedTraceSegments(result.frames)) {
+        for (var j = 0; j < segment.length; j++) {
+          final frame = segment[j];
+          final x = frame.time / maxTime * size.width;
+          final y =
+              size.height / 2 - frame.movement / maxAbs * size.height * .45;
+          if (j == 0) {
+            path.moveTo(x, y);
+          } else {
+            path.lineTo(x, y);
+          }
         }
       }
       canvas.drawPath(path, paint);

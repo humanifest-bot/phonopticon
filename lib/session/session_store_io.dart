@@ -5,7 +5,8 @@ import 'session_store.dart';
 SessionStore createSessionStore() => MobileSessionStore();
 
 /// Mobile storage. The resolver may be supplied by a host-side test.
-class MobileSessionStore implements SessionStore, SessionArchive {
+class MobileSessionStore
+    implements SessionStore, SessionArchive, GuardedSessionStore {
   MobileSessionStore({Future<Directory> Function()? directoryResolver})
     : _directoryResolver = directoryResolver ?? _platformDirectory;
 
@@ -52,7 +53,12 @@ class MobileSessionStore implements SessionStore, SessionArchive {
     // Preserve compatibility with snapshots written before the pointer existed.
     final files = await directory
         .list(followLinks: false)
-        .where((entry) => entry is File && entry.path.endsWith('.json'))
+        .where((entry) {
+          if (entry is! File) return false;
+          final name = entry.uri.pathSegments.last;
+          return name.endsWith('.json') &&
+              isValidSessionId(name.substring(0, name.length - '.json'.length));
+        })
         .cast<File>()
         .toList();
     if (files.isEmpty) return null;
@@ -98,8 +104,82 @@ class MobileSessionStore implements SessionStore, SessionArchive {
   @override
   Future<void> save(String sessionId, String snapshot) async {
     validateSessionId(sessionId);
+    await _withSessionLock(
+      sessionId,
+      (directory) => _replace(directory, sessionId, snapshot),
+    );
+  }
+
+  @override
+  Future<void> saveIfUnchanged(
+    String sessionId,
+    String snapshot, {
+    required String? expectedSnapshot,
+  }) async {
+    validateSessionId(sessionId);
+    await _withSessionLock(sessionId, (directory) async {
+      final file = File('${directory.path}/$sessionId.json');
+      final type = await FileSystemEntity.type(file.path, followLinks: false);
+      if (type != FileSystemEntityType.notFound &&
+          type != FileSystemEntityType.file) {
+        throw const FormatException('Invalid session snapshot.');
+      }
+      final current = type == FileSystemEntityType.file
+          ? await file.readAsString()
+          : null;
+      // Creation must not adopt another writer's identical record. For an
+      // update, the snapshot can be committed even if the later pointer
+      // update fails; retrying that identical update is safe.
+      if (expectedSnapshot == null
+          ? current != null
+          : current != expectedSnapshot && current != snapshot) {
+        throw const SessionWriteConflict(
+          'This session changed elsewhere. Export your current work or save it as a new session.',
+        );
+      }
+      await _replace(directory, sessionId, snapshot);
+    });
+  }
+
+  /// The marker protects cooperating instances, including same-process isolates.
+  /// After a crash a stale marker may remain; callers can save a new session.
+  Future<void> _withSessionLock(
+    String sessionId,
+    Future<void> Function(Directory) action,
+  ) async {
     final directory = await _directoryResolver();
     await directory.create(recursive: true);
+    final marker = File('${directory.path}/.$sessionId.write-lock');
+    try {
+      await marker.create(exclusive: true);
+    } on FileSystemException catch (error) {
+      final type = await FileSystemEntity.type(marker.path, followLinks: false);
+      // The other writer may release its marker between our failed exclusive
+      // create and this stat. Preserve the conflict classification in that
+      // race; POSIX EEXIST is 17 and Windows ERROR_ALREADY_EXISTS is 183.
+      if (type != FileSystemEntityType.notFound ||
+          error.osError?.errorCode == 17 ||
+          error.osError?.errorCode == 183) {
+        throw const SessionWriteConflict(
+          'This session is busy or has a stale save lock. Export your work or save it as a new session.',
+        );
+      }
+      rethrow;
+    }
+    try {
+      await action(directory);
+    } finally {
+      // This marker was created by this call. Never clear a pre-existing lock.
+      // If cleanup fails, preserve the lock and surface the uncertain state.
+      await marker.delete();
+    }
+  }
+
+  Future<void> _replace(
+    Directory directory,
+    String sessionId,
+    String snapshot,
+  ) async {
     // A temporary directory gives each save unique staging paths on the same
     // filesystem, so replacing each file is atomic. Keep other sessions intact.
     final staging = await directory.createTemp('.saving-');

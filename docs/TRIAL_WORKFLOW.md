@@ -51,6 +51,14 @@ and site and can be cleared or unavailable. Check the save status and export a
 copy of the complete session for safekeeping; local storage is not a backup. An exported recording
 contains microphone audio, so share it only deliberately.
 
+Current app versions detect competing saves of the same session. If a conflict
+is reported, export your current work or choose **Save as a new local
+session**; the two versions are not automatically merged. An older app version
+can still overwrite a session without participating in this protection.
+Mobile saves may report a stale write lock after a crash; save a separate copy
+and retain the original. Long recordings and multiple sessions can exhaust
+browser storage, so check save status and keep deliberate exports.
+
 Compare one completed stationary, motion and transmitter-off capture from the
 same setup. The comparison shows the selected trial IDs and times and initially
 selects the latest eligible attempts. Check the selections; choose a specific

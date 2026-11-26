@@ -120,6 +120,22 @@ void main() {
       expect(ToneCalibration.fromJson(p.toJson()).id, p.id);
     },
   );
+  test('legacy browser training hashes still reject reused PCM', () {
+    final json = p.toJson();
+    final hashes = List<String>.from(json['trainingFingerprints'] as List);
+    hashes[0] = legacyBrowserFingerprint(
+      wavBytes(stationary.received, stationary.actualSampleRate),
+    );
+    expect(hashes[0], isNot(captureFingerprint(stationary)));
+    final legacy = ToneCalibration.fromJson({
+      ...json,
+      'trainingFingerprints': hashes,
+    });
+    expect(
+      legacy.apply(stationary, analyze(stationary)).quality.join(),
+      contains('held-out'),
+    );
+  });
   test(
     'overlapping calibration and absent carrier fail rather than force a threshold',
     () {

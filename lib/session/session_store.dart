@@ -11,6 +11,29 @@ abstract interface class SessionStore {
   Future<void> save(String sessionId, String snapshot);
 }
 
+/// Optional optimistic concurrency protection for cooperating app instances.
+/// An absent expected snapshot requests strict creation: an existing record
+/// always conflicts, even if its content is identical. For an existing record,
+/// an already-written identical update may be retried to finish an interrupted
+/// save. If creation wrote the snapshot but failed to update the mobile latest
+/// pointer, retry conflicts; preserve the snapshot and save a new copy instead.
+/// Conflicts do not replace the stored snapshot or latest-session pointer.
+/// Older app versions that do not cooperate can still overwrite data.
+abstract interface class GuardedSessionStore {
+  Future<void> saveIfUnchanged(
+    String sessionId,
+    String snapshot, {
+    required String? expectedSnapshot,
+  });
+}
+
+class SessionWriteConflict implements Exception {
+  const SessionWriteConflict(this.message);
+  final String message;
+  @override
+  String toString() => message;
+}
+
 /// Optional access to all saved sessions. Snapshot contents are returned as
 /// stored; callers must validate their format and schema before using them.
 abstract interface class SessionArchive {

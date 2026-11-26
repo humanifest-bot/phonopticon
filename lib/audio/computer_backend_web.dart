@@ -63,9 +63,17 @@ class ComputerBackend implements AudioBackend, MicrophoneMeterBackend {
       final rx = Float64List.fromList(
         (data['samples'] as List).map((x) => (x as num).toDouble()).toList(),
       );
+      final cancelled = data['cancelled'] as bool;
+      final failure = data['failure'] as String?;
+      // A stopped worklet reports only the synchronized received prefix. If
+      // its stop acknowledgement is lost, the length is zero and the emitted
+      // tail is unknown; do not export the full planned waveform as emitted.
+      final prefixLength = rx.length < tx.length ? rx.length : tx.length;
       return AudioCapture(
         config: config,
-        emitted: tx,
+        emitted: cancelled || failure != null
+            ? Float64List.sublistView(tx, 0, prefixLength)
+            : tx,
         received: rx,
         sourceKind: 'PHYSICAL',
         backendId: 'browser-audio-v1',
@@ -73,7 +81,12 @@ class ComputerBackend implements AudioBackend, MicrophoneMeterBackend {
         elapsedMicroseconds: data['elapsedMicroseconds'] as int,
         actualSampleRate: data['actualSampleRate'] as int,
         deviceMetadata: Map<String, Object?>.from(data['metadata'] as Map),
-        cancelled: data['cancelled'] as bool,
+        cancelled: cancelled,
+        status: [
+          if (failure != null) failure,
+          if (cancelled || failure != null)
+            'Partial capture: emitted WAV is the planned captured-length prefix; any output after that prefix is unknown.',
+        ],
       );
     } finally {
       watch.cancel();

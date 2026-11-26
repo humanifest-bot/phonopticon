@@ -1,6 +1,9 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../domain/experiment.dart';
+import '../signal/trace_time.dart';
+export '../signal/trace_time.dart'
+    show nominalFrameInterval, elapsedTraceSegments, heatmapTimeCells;
 
 class TrialPlot extends StatelessWidget {
   const TrialPlot({super.key, required this.result, this.movement = false});
@@ -50,19 +53,33 @@ class _PlotPainter extends CustomPainter {
       RRect.fromRectAndRadius(box, const Radius.circular(6)),
       Paint()..color = const Color(0xff0c1b30),
     );
-    final duration = r.frames.last.time;
+    final cells = heatmapTimeCells(r.frames);
+    if (cells.isEmpty) return;
+    final duration = r.frames
+        .where((frame) => frame.time.isFinite && frame.time >= 0)
+        .fold<double>(0, (latest, frame) => math.max(latest, frame.time));
+    if (duration <= 0) return;
     if (!movement) {
       final low = r.axisLabel.startsWith('Doppler') ? -120.0 : -180.0;
-      for (var t = 0; t < r.frames.length; t++) {
+      for (final cell in cells) {
+        final frame = r.frames[cell.frameIndex];
+        final left = box.left + cell.startSeconds / duration * box.width;
+        final right = box.left + cell.endSeconds / duration * box.width;
+        // For a single distinct timestamp show one pixel, without inventing a
+        // duration; clamp it to the visible time range.
+        final markerWidth = math.min(1.0, box.width);
+        final pixelLeft = right > left
+            ? left
+            : (left - markerWidth / 2).clamp(box.left, box.right - markerWidth);
+        final pixelWidth = right > left ? right - left : markerWidth;
         for (var k = 0; k < r.axis.length; k++) {
-          final db =
-              10 * math.log(math.max(1e-24, r.frames[t].power[k])) / math.ln10;
+          final db = 10 * math.log(math.max(1e-24, frame.power[k])) / math.ln10;
           final v = ((db - low) / 100).clamp(0.0, 1.0);
           canvas.drawRect(
             Rect.fromLTWH(
-              box.left + t / r.frames.length * box.width,
+              pixelLeft,
               box.bottom - (k + 1) / r.axis.length * box.height,
-              box.width / r.frames.length + 0.5,
+              pixelWidth,
               box.height / r.axis.length + 0.5,
             ),
             Paint()
@@ -84,9 +101,12 @@ class _PlotPainter extends CustomPainter {
       );
     } else {
       final signed = r.settings.containsKey('breathingAlgorithm');
+      final segments = elapsedTraceSegments(r.frames);
+      final values = [for (final segment in segments) ...segment];
+      if (values.isEmpty) return;
       final maxScore = math.max(
         math.max(1e-12, r.threshold * 2),
-        r.frames
+        values
             .map((f) => signed ? f.movement.abs() : f.movement)
             .reduce(math.max),
       );
@@ -103,14 +123,16 @@ class _PlotPainter extends CustomPainter {
       text(canvas, r.threshold.toStringAsFixed(2), Offset(0, thresholdY - 5));
       text(canvas, maxScore.toStringAsFixed(2), Offset(0, box.top));
       final path = Path();
-      for (var i = 0; i < r.frames.length; i++) {
-        final f = r.frames[i];
-        final x = box.left + f.time / duration * box.width,
-            y = origin - f.movement * scale;
-        if (i == 0) {
-          path.moveTo(x, y);
-        } else {
-          path.lineTo(x, y);
+      for (final segment in segments) {
+        for (var i = 0; i < segment.length; i++) {
+          final f = segment[i];
+          final x = box.left + f.time / duration * box.width,
+              y = origin - f.movement * scale;
+          if (i == 0) {
+            path.moveTo(x, y);
+          } else {
+            path.lineTo(x, y);
+          }
         }
       }
       canvas.drawPath(

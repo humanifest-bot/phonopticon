@@ -396,8 +396,9 @@ live browser session.
 Scope: session listing and recovery, stable trial IDs, explicit attempt and
 retry selection, recording-quality diagnostics, trace comparison, and a
 held-out [calibration protocol](REPEATABLE_CALIBRATION.md). A selected trial's
-original bundle is reused for its individual export. Saved attempts include
-operator notes at completion; malformed saved attempts are reported instead
+original bundle is reused for its individual export. Guided per-attempt note
+snapshots were intended here, but the later audit below found they were omitted;
+malformed saved attempts are reported instead
 of being rewritten. The fixed breathing-comparison criteria were not changed.
 High-RMS windows and probe-band measurements are descriptive heuristics, not a
 diagnosis of their cause or physical sound pressure. Trace time axes are
@@ -445,3 +446,93 @@ the fixture UI, not physical audio, quota exhaustion, multi-tab conflicts, or
 native mobile storage. The subsequent source-review safeguards were verified
 with widget tests, not rerun in the browser fixture. No new physical trials
 were recorded, and mobile capture and iOS hardware remain unverified.
+
+## Evidence-integrity audit (2026-11-25)
+
+The audit found and fixed: missing per-attempt guided notes and logging times;
+unrelated guided notes included in tone-validation exports; browser FNV-1a
+arithmetic that differed from the canonical VM result; silently overwritable
+concurrent session saves; plots that compressed or connected across missing
+frame times; and audio failure/Stop paths that could misrepresent the planned
+waveform as fully emitted. The existing breathing criteria were not changed.
+The UI labels reported route, volume and audio-processing limitations.
+
+New guided attempts include a `loggedUtc` timestamp and a snapshot of operator
+notes. `loggedUtc` is recorded after analysis and is not a measured audio-end
+time. Existing `endedUtc` fields remain readable. Older tone-validation exports
+may already contain unrelated notes; no historical files were scanned or
+modified. Before this fix browser artifact fingerprints could be noncanonical;
+the originals remain unchanged. New hashes use exact 32-bit FNV-1a arithmetic,
+and tone reuse checks conservatively recognize both the canonical and legacy
+browser calculations. These fingerprints are not cryptographic identity.
+
+Cooperating current clients use guarded saves. When a session changes elsewhere,
+the app retains its in-memory work and offers export or a separate copy. A
+mobile per-session lock may remain after a crash; it is not removed
+automatically. New sessions use a secure random ID and refuse an existing ID,
+including one with identical content. A first mobile save that writes a snapshot
+but fails updating its pointer can consequently conflict on retry; exporting or
+saving a separate copy preserves the work. Older app versions can still bypass
+these guards, and large-session memory and quota behavior is not established.
+
+Inspected tests ran with `umask 077`, the cached SDK prefix documented in
+README, local test/build/SDK-lock writes, and no installation or audio device:
+
+```sh
+flutter_cached test --no-pub --reporter expanded
+flutter_cached analyze --no-pub
+flutter_cached build web --no-pub --no-web-resources-cdn --no-wasm-dry-run
+node --check web/computer_audio.js
+node --check web/audio_capture_worklet.js
+node --check tool/test_computer_audio.cjs
+node tool/test_computer_audio.cjs
+node tool/test_microphone_meter.cjs
+/opt/homebrew/Caskroom/flutter/3.47.4/flutter/bin/cache/dart-sdk/bin/dart \
+  --disable-dart-dev tool/verify_fingerprints.dart
+/opt/homebrew/Caskroom/flutter/3.47.4/flutter/bin/cache/dart-sdk/bin/dart \
+  compile js tool/verify_fingerprints.dart \
+  --output=/private/tmp/phonopticon-fingerprint-2ZrSpcKs/check-final.js
+node /private/tmp/phonopticon-fingerprint-2ZrSpcKs/check-final.js
+```
+
+The full Flutter suite passed 77 tests, including 71 synthetic numerical
+assertions; static analysis reported no issues; the web build passed with the
+existing unused Cupertino font warning. Mock JS checks passed for off/amplitude
+guards, missing or nonfinite input, malformed/short completions, Stop races and
+unknown output tails. Other tests exercised conflicting writes, strict session
+ID collisions, a stale mobile lock, legacy-browser hash reuse, privacy of a
+tone-validation export and timestamped per-attempt notes. Tests used temporary
+fixture files and did not record microphone data.
+The fingerprint command passed on both the Dart VM and its compiled JavaScript
+run under Node: canonical/legacy values were `4f9f2cab`/`8da7dac0` for `hello`
+and `50259ab5`/`4561c61a` for the independent 10,000-byte vector. Compilation
+wrote only the named temporary JavaScript output and its associated files.
+
+An isolated in-app browser test built `test/browser_workflow_fixture.dart` to
+`/private/tmp/phonopticon-audit-browser-ar70F7gY` and served it temporarily on
+`127.0.0.1:52283`. The fixture cannot access audio hardware. Two tabs opened
+one test session: after one saved a synthetic note, the second was blocked from
+overwriting it, saved a separate copy, and the first note was recovered. The
+browser also displayed canonical FNV-1a `hello` = `4f9f2cab` and legacy browser
+arithmetic = `8da7dac0`. The fixture server was stopped and no existing browser
+session or recording was altered. This browser check preceded the later strict
+creation and secure-ID refinement, which was tested in host fixtures but not
+rerun in the browser.
+
+Using the pre-existing local JDK, Android SDK and Gradle distribution, the
+following command exited 0 and compiled Android debug Kotlin and Flutter debug
+assets with offline dependency resolution:
+
+```sh
+cd android
+JAVA_HOME=/Users/legion/Library/Java/JavaVirtualMachines/jdk-17.0.21.1+2/Contents/Home \
+ANDROID_HOME=/Users/legion/Library/Android/sdk CI=true \
+/Users/legion/.gradle/wrapper/dists/gradle-9.3.1-all/9ot9r568e8zfvvd4mn8rbu1j0/gradle-9.3.1/bin/gradle \
+  --offline --no-daemon :app:compileDebugKotlin
+```
+
+The existing Android Gradle deprecation and SDK XML warnings remained. This was
+not an APK install or an interactive device test. `xcode-select -p` returned
+`/Library/Developer/CommandLineTools`; full Xcode/iOS compilation was not
+available. Mobile device locking, actual microphone playback and breathing
+detection remain unverified; no new physical trial was performed.
